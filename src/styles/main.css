@@ -1,0 +1,295 @@
+:root {
+  color: #243247;
+  background: #f3f5f9;
+  font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --text-muted: #718096;
+  --border-color: #e2e7ef;
+  --surface-muted: #f8fafc;
+  --panel-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #f3f5f9;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid #4c70c9;
+  outline-offset: 2px;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.workspace {
+  width: 100%;
+  max-width: 1920px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px 24px 28px;
+}
+
+.workspace__header,
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workspace__header {
+  min-height: 58px;
+}
+
+.workspace__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace__brand-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: #fff;
+  border-radius: 10px;
+  background: #405fa9;
+  box-shadow: 0 5px 14px rgb(64 95 169 / 20%);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.5px;
+}
+
+.workspace__header h1,
+.workspace h2 {
+  margin: 0;
+  color: #243247;
+}
+
+.workspace__header h1 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.25px;
+}
+
+.workspace h2 {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.workspace__header p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.workspace__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.workspace__status {
+  margin-right: 4px;
+}
+
+.workspace__notice {
+  margin-top: 14px;
+}
+
+.workspace__layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 286px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.workspace__sidebar,
+.workspace__content {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 14px;
+}
+
+.workspace__sidebar {
+  position: sticky;
+  top: 16px;
+}
+
+section.panel,
+.panel {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--panel-shadow);
+}
+
+.workspace__storage-note {
+  padding: 13px 15px;
+  color: var(--text-muted);
+  border: 1px solid #e3e8f0;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 60%);
+  font-size: 11px;
+}
+
+.workspace__storage-note strong {
+  color: #526178;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace__storage-note p {
+  margin: 5px 0 0;
+  line-height: 1.7;
+}
+
+.workspace__new-dialog {
+  display: grid;
+  gap: 12px;
+  padding: 6px 0;
+  color: #526178;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.workspace__new-dialog p {
+  margin: 0;
+}
+
+/* Naive UI 对话框内的组件自带边界，避免嵌套成第二层卡片。 */
+.file-import,
+.mapping-editor {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.n-data-table .n-data-table-th {
+  color: #526178;
+  background: #f7f9fc;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.n-data-table .n-data-table-td {
+  color: #334155;
+  background: #fff;
+}
+
+.n-data-table .n-data-table-tr:hover .n-data-table-td {
+  background: #fafbfe;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #c4ccd8;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    padding: 16px;
+  }
+
+  .workspace__layout {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .workspace__status {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace__toolbar {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .workspace__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace__sidebar {
+    position: static;
+  }
+
+  .workspace__storage-note {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .workspace {
+    padding: 12px;
+  }
+
+  .workspace__brand-mark {
+    display: none;
+  }
+
+  .workspace__toolbar .n-button {
+    flex: 1;
+  }
+
+  section.panel,
+  .panel {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "fileVersion": "0x30",
+  "fileSize": 3049,
+  "recordCount": 1,
+  "headerLength": 1736,
+  "recordLength": 1313,
+  "languageDriver": "0x7A",
+  "encoding": "gbk",
+  "descriptorCount": 45,
+  "businessFieldCount": 44,
+  "businessFieldType": "C",
+  "systemFieldName": "_NullFlags",
+  "systemFieldType": "0",
+  "fieldTerminatorOffset": 1472,
+  "trailingHeaderLength": 263,
+  "trailingHeaderBytes": "zero-filled",
+  "fileTerminator": "absent",
+  "lastByte": "0x00"
+}
