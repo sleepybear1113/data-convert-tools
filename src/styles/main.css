@@ -120,12 +120,57 @@ button:focus-visible,
   margin-top: 14px;
 }
 
+/* 三列：侧边栏（宽度由 --sidebar-width 控制）| 拖动条 | 内容区。 */
 .workspace__layout {
   display: grid;
-  grid-template-columns: minmax(250px, 286px) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, var(--sidebar-width, 286px))
+    16px
+    minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
   margin-top: 18px;
+}
+
+/* 侧边栏右缘的宽度拖动条：16px 列内 10px 命中区，中间 2px 指示线。 */
+.workspace__resizer {
+  position: relative;
+  align-self: stretch;
+  margin: 0 3px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.workspace__resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border-color);
+  opacity: 0.6;
+  transform: translateX(-50%);
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.workspace__resizer:hover::before,
+.workspace__resizer:focus-visible::before {
+  background: #4c70c9;
+  opacity: 1;
+}
+
+.workspace__resizer:focus-visible {
+  outline: 2px solid #4c70c9;
+  outline-offset: -3px;
+  border-radius: 4px;
+}
+
+/* 拖动期间全局锁定光标与文本选择。 */
+body.is-pointer-dragging,
+body.is-pointer-dragging * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .workspace__sidebar,
@@ -231,8 +276,10 @@ section.panel,
   }
 
   .workspace__layout {
-    grid-template-columns: 240px minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns:
+      minmax(0, var(--sidebar-width, 286px))
+      12px
+      minmax(0, 1fr);
   }
 
   .workspace__status {
@@ -253,6 +300,10 @@ section.panel,
 
   .workspace__layout {
     grid-template-columns: 1fr;
+  }
+
+  .workspace__resizer {
+    display: none;
   }
 
   .workspace__sidebar {

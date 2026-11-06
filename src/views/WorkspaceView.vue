@@ -31,6 +31,7 @@ import type { ColumnMapping, ImportMapping } from '../core/model/conversion'
 import type { Diagnostic } from '../core/model/diagnostic'
 import type { TableRow, TableSchema } from '../core/model/table'
 import { quoteSqliteIdentifier } from '../core/utils/identifiers'
+import { usePointerDrag } from '../composables/usePointerDrag'
 import { useSettingsStore } from '../stores/settings'
 import { useWorkspaceStore } from '../stores/workspace'
 import {
@@ -76,6 +77,45 @@ const integration = computed<WorkspaceIntegration | null>(
 
 const sqlEditor = ref<InstanceType<typeof SqlEditor> | null>(null)
 const importPanel = ref<InstanceType<typeof FileImportPanel> | null>(null)
+
+/** 侧边栏宽度（px）。仅内存态，刷新后回到默认值。 */
+const SIDEBAR_DEFAULT_WIDTH = 286
+const SIDEBAR_MIN_WIDTH = 220
+const SIDEBAR_MAX_WIDTH = 600
+const sidebarWidth = ref(SIDEBAR_DEFAULT_WIDTH)
+const sidebarAside = ref<HTMLElement | null>(null)
+
+const layoutStyle = computed(() => ({
+  '--sidebar-width': `${sidebarWidth.value}px`,
+}))
+
+function clampSidebarWidth(width: number): number {
+  const viewportMax = Math.floor(window.innerWidth * 0.55)
+  const max = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewportMax))
+  return Math.round(Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), max))
+}
+
+const dragSidebar = usePointerDrag<number>({
+  onStart: () => sidebarAside.value?.getBoundingClientRect().width ?? sidebarWidth.value,
+  onMove: (event, state) => {
+    sidebarWidth.value = clampSidebarWidth(state.context + event.clientX - state.startX)
+  },
+})
+
+function resetSidebarWidth(): void {
+  sidebarWidth.value = SIDEBAR_DEFAULT_WIDTH
+}
+
+function onSidebarResizerKeydown(event: KeyboardEvent): void {
+  const step = event.shiftKey ? 48 : 16
+  if (event.key === 'ArrowLeft') {
+    sidebarWidth.value = clampSidebarWidth(sidebarWidth.value - step)
+    event.preventDefault()
+  } else if (event.key === 'ArrowRight') {
+    sidebarWidth.value = clampSidebarWidth(sidebarWidth.value + step)
+    event.preventDefault()
+  }
+}
 
 const sql = ref(props.initialSql)
 const executedSql = ref('')
@@ -624,8 +664,8 @@ onMounted(() => {
         {{ notice }}
       </n-alert>
 
-      <div class="workspace__layout">
-        <aside class="workspace__sidebar">
+      <div class="workspace__layout" :style="layoutStyle">
+        <aside ref="sidebarAside" class="workspace__sidebar">
           <SchemaNavigator
             :schema="workspace.schema"
             :active-table-name="workspace.activeTableName"
@@ -641,6 +681,21 @@ onMounted(() => {
             <p>数据保留在浏览器内存中。刷新或关闭页面前，请导出需要保留的成果。</p>
           </section>
         </aside>
+
+        <div
+          class="workspace__resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整侧边栏宽度"
+          :aria-valuenow="sidebarWidth"
+          :aria-valuemin="SIDEBAR_MIN_WIDTH"
+          :aria-valuemax="SIDEBAR_MAX_WIDTH"
+          tabindex="0"
+          title="拖动或用 ←/→ 调整宽度（Shift 加速），双击恢复默认"
+          @pointerdown="dragSidebar"
+          @dblclick="resetSidebarWidth"
+          @keydown="onSidebarResizerKeydown"
+        />
 
         <div class="workspace__content">
           <SqlEditor
