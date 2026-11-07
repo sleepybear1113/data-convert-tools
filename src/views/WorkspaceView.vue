@@ -31,6 +31,7 @@ import type { ColumnMapping, ImportMapping } from '../core/model/conversion'
 import type { Diagnostic } from '../core/model/diagnostic'
 import type { TableRow, TableSchema } from '../core/model/table'
 import { quoteSqliteIdentifier } from '../core/utils/identifiers'
+import { simpleSelectSourceTable } from '../core/utils/sql-select'
 import { usePointerDrag } from '../composables/usePointerDrag'
 import { useSettingsStore } from '../stores/settings'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -51,7 +52,7 @@ const props = withDefaults(
   }>(),
   {
     api: undefined,
-    initialSql: 'SELECT * FROM imported_data LIMIT 100;',
+    initialSql: 'SELECT * FROM imported_data LIMIT 500;',
     pageSize: undefined,
   },
 )
@@ -77,6 +78,7 @@ const integration = computed<WorkspaceIntegration | null>(
 
 const sqlEditor = ref<InstanceType<typeof SqlEditor> | null>(null)
 const importPanel = ref<InstanceType<typeof FileImportPanel> | null>(null)
+const mappingEditor = ref<InstanceType<typeof ColumnMappingEditor> | null>(null)
 
 /** 侧边栏宽度（px）。仅内存态，刷新后回到默认值。 */
 const SIDEBAR_DEFAULT_WIDTH = 286
@@ -153,7 +155,23 @@ const exportError = ref('')
 const newVisible = ref(false)
 const newLoading = ref(false)
 const newError = ref('')
+const pendingDeleteTable = ref<string | null>(null)
+const deleteLoading = ref(false)
+const renameLoading = ref(false)
+const resultGroupColumns = ref<readonly string[]>([])
+const detectingTypes = ref(false)
 const notice = ref('')
+
+/** 当前 SQL 是简单单表读取时对应的表名（「选中的数据表」来源可按该表分组导出）。 */
+const groupableTableName = computed<string | null>(() => {
+  if (!hasExecuted.value) return null
+  const tableName = simpleSelectSourceTable(executedSql.value)
+  if (!tableName) return null
+  const exists = workspace.schema.tables.some(
+    (table) => table.name.toLowerCase() === tableName.toLowerCase(),
+  )
+  return exists ? tableName : null
+})
 
 let busyOperations = 0
 
@@ -164,7 +182,9 @@ const working = computed(
     schemaLoading.value ||
     importLoading.value ||
     exportLoading.value ||
-    newLoading.value,
+    newLoading.value ||
+    deleteLoading.value ||
+    renameLoading.value,
 )
 const hasAnyError = computed(() =>
   Boolean(
@@ -387,6 +407,8 @@ async function executeSql(value: string): Promise<void> {
 
     // DDL/DML 后同步表名与列名补全；SELECT 刷新也只是元数据操作。
     await refreshSchema(false)
+    // 执行成功后记录到查询历史（由保存设置决定是否持久化）。
+    sqlEditor.value?.recordHistory(value)
   } catch (reason) {
     sqlError.value = reportError(reason)
   } finally {
@@ -427,6 +449,34 @@ function selectTable(tableName: string): void {
 async function previewTable(tableName: string): Promise<void> {
   selectTable(tableName)
   const query = `SELECT *\nFROM ${quoteSqliteIdentifier(tableName)}\nLIMIT ${resultPageSize.value};`
+  // 编辑器有用户内容（非空、非默认模板、非同一查询）时，先提示「查询会清空编辑器」。
+  const editorUnused = !sql.value.trim() || sql.value === props.initialSql
+  if (!editorUnused && sql.value !== query) {
+    pendingPreview.value = { tableName, query }
+    previewConfirmVisible.value = true
+    return
+  }
+  await runPreview(query)
+}
+
+const pendingPreview = ref<{ tableName: string; query: string } | null>(null)
+const previewConfirmVisible = ref(false)
+
+async function confirmPreview(): Promise<boolean> {
+  const pending = pendingPreview.value
+  previewConfirmVisible.value = false
+  pendingPreview.value = null
+  if (!pending) return true
+  await runPreview(pending.query)
+  return true
+}
+
+function cancelPreview(): void {
+  pendingPreview.value = null
+  previewConfirmVisible.value = false
+}
+
+async function runPreview(query: string): Promise<void> {
   sql.value = query
   await nextTick()
   sqlEditor.value?.focus()
@@ -529,6 +579,36 @@ function cancelMapping(): void {
   clearPendingImport()
 }
 
+/** 深度类型检测：按行数上限重新推断，并同步映射表与源 schema 的显示。 */
+async function handleDetectTypes(limit: number | null): Promise<void> {
+  const request = pendingImport.value
+  const api = integration.value
+  const infer = api?.inferSourceTypes?.bind(api)
+  if (!request || !infer) {
+    mappingError.value = missingIntegration('inferSourceTypes')
+    return
+  }
+
+  detectingTypes.value = true
+  try {
+    const { dataTypes } = await infer(request, pendingImportContext.value, limit)
+    mappingEditor.value?.applyInferredTypes(dataTypes)
+    if (pendingSourceSchema.value) {
+      pendingSourceSchema.value = {
+        ...pendingSourceSchema.value,
+        columns: pendingSourceSchema.value.columns.map((column, index) => ({
+          ...column,
+          dataType: dataTypes[index] ?? column.dataType,
+        })),
+      }
+    }
+  } catch (reason) {
+    mappingError.value = reportError(reason)
+  } finally {
+    detectingTypes.value = false
+  }
+}
+
 function clearLocalResult(): void {
   pageRequestSequence += 1
   workspace.activeResultId = null
@@ -618,6 +698,100 @@ function locateDiagnostic(diagnostic: Diagnostic): void {
   if (diagnostic.location?.tableName) selectTable(diagnostic.location.tableName)
 }
 
+/** 侧边栏操作（改名/删除）没有专属弹窗，错误统一进入诊断列表。 */
+function pushSidebarError(code: string, message: string): void {
+  workspace.diagnostics = [
+    ...workspace.diagnostics,
+    { code, severity: 'error', message },
+  ]
+}
+
+async function handleTableRename(payload: { tableName: string; newName: string }): Promise<void> {
+  const api = integration.value
+  const rename = api?.renameTable?.bind(api)
+  if (!rename) {
+    pushSidebarError('RENAME_NOT_AVAILABLE', missingIntegration('renameTable'))
+    return
+  }
+
+  renameLoading.value = true
+  beginBusy()
+  try {
+    const result = await rename(payload.tableName, payload.newName)
+    await applyMutationResult(result, payload.newName)
+    workspace.dirty = true
+    notice.value = `已重命名数据表：${payload.tableName} → ${payload.newName}。`
+  } catch (reason) {
+    pushSidebarError('TABLE_RENAME_FAILED', reportError(reason))
+  } finally {
+    renameLoading.value = false
+    endBusy()
+  }
+}
+
+async function confirmDeleteTable(): Promise<boolean> {
+  const tableName = pendingDeleteTable.value
+  const api = integration.value
+  const deleteTable = api?.deleteTable?.bind(api)
+  if (!tableName || !deleteTable) {
+    pushSidebarError('DELETE_NOT_AVAILABLE', missingIntegration('deleteTable'))
+    return false
+  }
+
+  deleteLoading.value = true
+  beginBusy()
+  try {
+    const result = await deleteTable(tableName)
+    // 删除的是当前激活表时，同步清空遗留的查询结果，避免展示失效数据。
+    if (workspace.activeTableName === tableName) clearLocalResult()
+    await applyMutationResult(result)
+    workspace.dirty = true
+    notice.value = `已删除数据表：${tableName}。`
+    pendingDeleteTable.value = null
+    return true
+  } catch (reason) {
+    pushSidebarError('TABLE_DELETE_FAILED', reportError(reason))
+    return false
+  } finally {
+    deleteLoading.value = false
+    endBusy()
+  }
+}
+
+/** 侧边栏拖入文件：自动打开导入弹窗并预选该文件。 */
+const sidebarDropActive = ref(false)
+
+function containsFiles(event: DragEvent): boolean {
+  return [...(event.dataTransfer?.types ?? [])].includes('Files')
+}
+
+function onSidebarDragOver(event: DragEvent): void {
+  if (!containsFiles(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  sidebarDropActive.value = true
+}
+
+function onSidebarDragLeave(event: DragEvent): void {
+  const aside = event.currentTarget as HTMLElement | null
+  if (event.relatedTarget && aside?.contains(event.relatedTarget as Node)) return
+  sidebarDropActive.value = false
+}
+
+async function onSidebarDrop(event: DragEvent): Promise<void> {
+  event.preventDefault()
+  sidebarDropActive.value = false
+  const files = [...(event.dataTransfer?.files ?? [])]
+  if (!files.length) return
+
+  openImport()
+  if (files.length > 1) {
+    importError.value = '每次只能导入一个文件，已载入第一个文件，其余已忽略。'
+  }
+  await nextTick()
+  importPanel.value?.setFile(files[0] ?? null)
+}
+
 watch(
   () => props.initialSql,
   (value) => {
@@ -635,12 +809,11 @@ onMounted(() => {
 
 <template>
   <n-config-provider :locale="zhCN" :theme-overrides="themeOverrides">
-    <main class="workspace">
+    <main class="workspace" @dragover.prevent @drop.prevent>
       <header class="workspace__header">
         <div class="workspace__brand">
-          <div class="workspace__brand-mark" aria-hidden="true">DC</div>
           <div>
-            <h1>Data Convert Tools</h1>
+            <h1>数据转换工具</h1>
             <p>DBF · SQLite · XLSX · CSV</p>
           </div>
         </div>
@@ -665,16 +838,26 @@ onMounted(() => {
       </n-alert>
 
       <div class="workspace__layout" :style="layoutStyle">
-        <aside ref="sidebarAside" class="workspace__sidebar">
+        <aside
+          ref="sidebarAside"
+          class="workspace__sidebar"
+          :class="{ 'workspace__sidebar--drop': sidebarDropActive }"
+          @dragover="onSidebarDragOver"
+          @dragleave="onSidebarDragLeave"
+          @drop="onSidebarDrop"
+        >
           <SchemaNavigator
             :schema="workspace.schema"
             :active-table-name="workspace.activeTableName"
-            :loading="schemaLoading"
+            :loading="schemaLoading || renameLoading"
             :error="schemaError"
             @select="selectTable"
             @preview="previewTable"
             @insert="sqlEditor?.insertText($event)"
+            @insert-table="sqlEditor?.insertText(quoteSqliteIdentifier($event))"
             @refresh="refreshSchema()"
+            @remove="pendingDeleteTable = $event"
+            @rename="handleTableRename"
           />
           <section class="workspace__storage-note">
             <strong>本地会话</strong>
@@ -720,6 +903,7 @@ onMounted(() => {
             :rows-affected="rowsAffected"
             @page-change="handlePageChange"
             @refresh="refreshResult"
+            @group-columns-change="resultGroupColumns = $event"
           />
           <DiagnosticList
             :diagnostics="workspace.diagnostics"
@@ -762,13 +946,17 @@ onMounted(() => {
       >
         <ColumnMappingEditor
           v-if="pendingSourceSchema"
+          ref="mappingEditor"
           v-model="mappingColumns"
           v-model:target-table-name="mappingTargetName"
           :source-schema="pendingSourceSchema"
           :loading="importLoading"
           :error="mappingError"
+          :supports-type-inference="pendingImport?.format === 'csv' || pendingImport?.format === 'xlsx'"
+          :detecting="detectingTypes"
           @submit="handleMappingSubmit"
           @cancel="cancelMapping"
+          @detect-types="handleDetectTypes"
         />
       </n-modal>
 
@@ -778,6 +966,8 @@ onMounted(() => {
         :active-table-name="workspace.activeTableName"
         :query-sql="executedSql"
         :has-query-result="hasQueryResult"
+        :group-columns="resultGroupColumns"
+        :groupable-table-name="groupableTableName"
         :loading="exportLoading"
         :error="exportError"
         :default-strict="settings.strictDbfExport"
@@ -803,6 +993,49 @@ onMounted(() => {
         <div class="workspace__new-dialog">
           <p>当前内存工作区将被清空。此操作无法撤销，请先导出需要保留的数据。</p>
           <n-alert v-if="newError" type="error">{{ newError }}</n-alert>
+        </div>
+      </n-modal>
+
+      <n-modal
+        :show="previewConfirmVisible"
+        preset="dialog"
+        title="清空 SQL 编辑器？"
+        positive-text="继续并执行查询"
+        negative-text="取消"
+        @positive-click="confirmPreview"
+        @negative-click="cancelPreview"
+        @update:show="(show: boolean) => { if (!show) cancelPreview() }"
+      >
+        <div class="workspace__new-dialog">
+          <p>
+            SQL 编辑器中已有内容。点击数据表旁的「查询」会
+            <strong>清空当前内容</strong>
+            并替换为「{{ pendingPreview?.tableName }}」的预览查询，是否继续？
+          </p>
+        </div>
+      </n-modal>
+
+      <n-modal
+        :show="pendingDeleteTable !== null"
+        preset="dialog"
+        title="删除数据表？"
+        positive-text="删除数据表"
+        negative-text="取消"
+        :positive-button-props="{ type: 'error', loading: deleteLoading }"
+        :negative-button-props="{ disabled: deleteLoading }"
+        :mask-closable="!deleteLoading"
+        :close-on-esc="!deleteLoading"
+        :closable="!deleteLoading"
+        @positive-click="confirmDeleteTable"
+        @negative-click="pendingDeleteTable = null"
+        @update:show="(show: boolean) => { if (!show) pendingDeleteTable = null }"
+      >
+        <div class="workspace__new-dialog">
+          <p>
+            将删除数据表
+            <strong>{{ pendingDeleteTable }}</strong>
+            及其全部数据，此操作无法撤销。请先导出需要保留的数据。
+          </p>
         </div>
       </n-modal>
     </main>

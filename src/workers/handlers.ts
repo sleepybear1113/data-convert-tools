@@ -8,6 +8,8 @@ import type { RuntimeExportOptions } from './export'
 import {
   importCsvIntoSqlite,
   importXlsxIntoSqlite,
+  inferCsvColumnTypes,
+  inferXlsxColumnTypes,
   previewCsv,
   previewXlsx,
 } from './format-source'
@@ -36,6 +38,8 @@ export function createWorkerHandlers(
       const target = await resolveTargetTable(engine, tableName, mapping)
       return importCsvIntoSqlite(engine, buffer, options, target, mapping, fileName)
     },
+    'csv:infer-types': async ({ buffer, options, limit }) => inferCsvColumnTypes(buffer, options, limit),
+    'xlsx:infer-types': async ({ buffer, options, limit }) => inferXlsxColumnTypes(buffer, options, limit),
     'export:start': ({ options }) => exportWorkspace(
       engine,
       createEngine,
@@ -53,7 +57,7 @@ async function resolveTargetTable(
   const used = new Set(schema.tables.map((table) => table.name.toLowerCase()))
   const candidate = mapping?.targetTableName.trim() || requested?.trim()
 
+  // 同名表不再报错，自动追加 _1、_2 后缀（SQLite 表名大小写不敏感）。
   if (!candidate) return uniqueName('imported_data', used)
-  if (used.has(candidate.toLowerCase())) throw new Error(`Target table already exists: ${candidate}`)
-  return candidate
+  return uniqueName(candidate, used, { startSuffix: 1, caseInsensitive: true })
 }

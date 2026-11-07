@@ -13,6 +13,7 @@ import {
 
 import type { SqliteTableInfo } from '../core/database/schema'
 import type { DataSelection, ExportFormat } from '../core/model/conversion'
+import { exportFileTimestamp } from '../core/utils/timestamp'
 import type { WorkspaceExportOptions } from './contracts'
 
 type SourceKind = DataSelection['kind']
@@ -24,6 +25,13 @@ const props = withDefaults(
     activeTableName?: string | null
     querySql?: string
     hasQueryResult?: boolean
+    /** 结果表格中勾选的分组依据列；非空时展示「按勾选列分组导出」选项。 */
+    groupColumns?: readonly string[]
+    /**
+     * 当前查询对应的单表（SQL 为简单 SELECT/LIMIT 时）。
+     * 此时「选中的数据表」来源也可按勾选列对整表分组导出。
+     */
+    groupableTableName?: string | null
     loading?: boolean
     error?: string | null
     defaultStrict?: boolean
@@ -35,6 +43,8 @@ const props = withDefaults(
     activeTableName: null,
     querySql: '',
     hasQueryResult: false,
+    groupColumns: () => [],
+    groupableTableName: null,
     loading: false,
     error: null,
     defaultStrict: true,
@@ -51,9 +61,11 @@ const emit = defineEmits<{
 
 const source = ref<SourceKind>('table')
 const tableName = ref('')
-const format = ref<ExportFormat>('dbf')
-const fileName = ref('export.dbf')
+const format = ref<ExportFormat>('xlsx')
+const fileName = ref('')
 const fileNameTouched = ref(false)
+const grouped = ref(false)
+const exportTimestamp = ref(new Date())
 const strict = ref(props.defaultStrict)
 const includeMetadata = ref(props.defaultIncludeMetadata)
 const encoding = ref<'utf-8' | 'gbk' | 'gb18030'>('gbk')
@@ -67,11 +79,12 @@ const localError = ref('')
 const tableOptions = computed(() =>
   props.tables.map((table) => ({ label: table.name, value: table.name })),
 )
+// 次序：Excel、SQLite、DBF、CSV。
 const formatOptions: Array<{ label: string; value: ExportFormat }> = [
+  { label: 'Excel (.xlsx)', value: 'xlsx' },
+  { label: 'SQLite', value: 'sqlite' },
   { label: 'DBF', value: 'dbf' },
   { label: 'CSV', value: 'csv' },
-  { label: 'XLSX', value: 'xlsx' },
-  { label: 'SQLite', value: 'sqlite' },
 ]
 const encodingOptions = computed(() => {
   const options = [
@@ -91,24 +104,58 @@ const lineEndingOptions = [
   { label: 'CRLF（Windows）', value: '\r\n' },
   { label: 'LF（Unix）', value: '\n' },
 ]
-const extension = computed(() => `.${format.value}`)
+const extension = computed(() => (grouped.value ? '.zip' : `.${format.value}`))
 const displayError = computed(() => localError.value || props.error || '')
+/** 当前来源是否可分组导出：查询来源始终可；表来源仅当该表就是当前简单查询读取的表。 */
+const canGroupExport = computed(() => {
+  if (!props.groupColumns.length) return false
+  if (source.value === 'query') return true
+  if (source.value === 'table') {
+    const groupable = props.groupableTableName?.toLowerCase()
+    return Boolean(groupable) && tableName.value.toLowerCase() === groupable
+  }
+  return false
+})
+/** 分组导出的数据范围说明。 */
+const groupedScopeText = computed(() => {
+  if (source.value === 'query') return '按列值拆分当前查询结果'
+  return `按列值拆分数据表「${tableName.value}」的全部数据`
+})
 const canSubmit = computed(() => {
   if (!fileName.value.trim() || props.loading) return false
   if (source.value === 'table' && !tableName.value) return false
   if (source.value === 'query' && (!props.hasQueryResult || !props.querySql.trim())) return false
   if (format.value === 'xlsx' && !sheetName.value.trim()) return false
+  if (grouped.value && !canGroupExport.value) return false
   return true
 })
 
+function stripExtension(fileName: string | undefined): string | undefined {
+  if (!fileName) return undefined
+  const base = fileName.replace(/\.[^.]+$/, '').trim()
+  return base || undefined
+}
+
+/** 「原文件名」：优先导入源文件名；SQL 建表回退为表名。 */
 function suggestedBaseName(): string {
-  if (source.value === 'table') return tableName.value || 'table_export'
-  if (source.value === 'query') return 'query_result'
+  if (source.value === 'table') {
+    const info = props.tables.find((table) => table.name === tableName.value)
+    return stripExtension(info?.sourceFileName) || tableName.value || 'table_export'
+  }
+  if (source.value === 'query') {
+    if (props.tables.length === 1) {
+      const only = props.tables[0]
+      return stripExtension(only.sourceFileName) || only.name
+    }
+    return 'query_result'
+  }
   return 'workspace'
 }
 
 function updateSuggestedFileName(): void {
-  if (!fileNameTouched.value) fileName.value = `${suggestedBaseName()}${extension.value}`
+  if (fileNameTouched.value) return
+  const marker = grouped.value ? '分组导出' : '导出'
+  fileName.value = `${suggestedBaseName()}_${marker}_${exportFileTimestamp(exportTimestamp.value)}${extension.value}`
 }
 
 watch(
@@ -116,13 +163,15 @@ watch(
   (show) => {
     if (!show) return
     localError.value = ''
+    exportTimestamp.value = new Date()
+    grouped.value = false
     tableName.value = props.activeTableName || props.tables[0]?.name || ''
     source.value = tableName.value
       ? 'table'
       : props.hasQueryResult
         ? 'query'
         : 'workspace'
-    format.value = source.value === 'workspace' ? 'sqlite' : 'dbf'
+    format.value = source.value === 'workspace' ? 'sqlite' : 'xlsx'
     strict.value = props.defaultStrict
     includeMetadata.value = props.defaultIncludeMetadata
     fileNameTouched.value = false
@@ -144,6 +193,20 @@ watch(format, (value, previous) => {
   if (value === 'csv' && encoding.value === 'gb18030') encoding.value = 'utf-8'
   updateSuggestedFileName()
 })
+watch(grouped, () => {
+  localError.value = ''
+  updateSuggestedFileName()
+})
+// 当前来源不再支持分组时（切换来源/表名），自动取消勾选。
+watch(canGroupExport, (supported) => {
+  if (grouped.value && !supported) grouped.value = false
+})
+watch(
+  () => props.groupColumns,
+  (columns) => {
+    if (grouped.value && !columns.length) grouped.value = false
+  },
+)
 
 function updateFileName(value: string): void {
   fileName.value = value
@@ -153,7 +216,7 @@ function updateFileName(value: string): void {
 function normalizedFileName(): string {
   const base = fileName.value
     .trim()
-    .replace(/\.(dbf|csv|xlsx|sqlite|sqlite3|db)$/i, '')
+    .replace(/\.(dbf|csv|xlsx|sqlite|sqlite3|db|zip)$/i, '')
   return `${base || suggestedBaseName()}${extension.value}`
 }
 
@@ -184,6 +247,10 @@ function submit(): void {
     localError.value = '整个工作区只能导出为 SQLite；其他格式请选择数据表或查询。'
     return
   }
+  if (grouped.value && !canGroupExport.value) {
+    localError.value = '当前来源不支持分组导出。'
+    return
+  }
 
   const csvEncoding = encoding.value === 'gbk' ? 'gbk' : 'utf-8'
   emit('submit', {
@@ -204,6 +271,7 @@ function submit(): void {
       sheetName: sheetName.value.trim(),
       includeHeader: includeHeader.value,
     },
+    ...(grouped.value ? { groupBy: [...props.groupColumns] } : {}),
   })
 }
 </script>
@@ -214,7 +282,7 @@ function submit(): void {
     preset="card"
     title="导出数据"
     class="export-dialog"
-    :style="{ width: 'min(680px, calc(100vw - 32px))' }"
+    :style="{ width: 'min(720px, calc(100vw - 32px))' }"
     :mask-closable="!loading"
     :close-on-esc="!loading"
     :closable="!loading"
@@ -224,8 +292,8 @@ function submit(): void {
       <section class="export-dialog__section">
         <h3>1. 数据来源</h3>
         <n-radio-group v-model:value="source" :disabled="loading">
-          <n-radio-button value="table" :disabled="!tables.length">数据表</n-radio-button>
-          <n-radio-button value="query" :disabled="!hasQueryResult">当前查询</n-radio-button>
+          <n-radio-button value="table" :disabled="!tables.length">选中的数据表</n-radio-button>
+          <n-radio-button value="query" :disabled="!hasQueryResult">当前查询结果</n-radio-button>
           <n-radio-button value="workspace">整个工作区</n-radio-button>
         </n-radio-group>
 
@@ -249,8 +317,12 @@ function submit(): void {
 
       <section class="export-dialog__section">
         <h3>2. 文件与格式</h3>
-        <div class="export-dialog__format-row">
-          <n-radio-group v-model:value="format" :disabled="loading || source === 'workspace'">
+        <div class="export-dialog__file-row">
+          <n-radio-group
+            class="export-dialog__format-row"
+            v-model:value="format"
+            :disabled="loading || source === 'workspace'"
+          >
             <n-radio-button
               v-for="option in formatOptions"
               :key="option.value"
@@ -259,16 +331,25 @@ function submit(): void {
               {{ option.label }}
             </n-radio-button>
           </n-radio-group>
+          <label class="export-dialog__field export-dialog__file-name">
+            <span>文件名</span>
+            <n-input
+              :value="fileName"
+              :disabled="loading"
+              placeholder="导出_20261106_153020.xlsx"
+              @update:value="updateFileName"
+            />
+          </label>
         </div>
-        <label class="export-dialog__field">
-          <span>文件名</span>
-          <n-input
-            :value="fileName"
-            :disabled="loading"
-            placeholder="export.dbf"
-            @update:value="updateFileName"
-          />
-        </label>
+        <div v-if="canGroupExport" class="export-dialog__grouped">
+          <n-checkbox v-model:checked="grouped" :disabled="loading">
+            按勾选列分组导出
+          </n-checkbox>
+          <span class="export-dialog__grouped-hint">
+            {{ groupedScopeText }}；依据列：{{ props.groupColumns.join('、') }}。每组一个
+            .{{ format }} 文件，打包为 ZIP 压缩包下载。
+          </span>
+        </div>
       </section>
 
       <section class="export-dialog__section">
@@ -333,11 +414,11 @@ function submit(): void {
 <style scoped>
 .export-dialog__body {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .export-dialog__section {
-  padding: 0 0 18px;
+  padding: 0 0 12px;
   border: 0;
   border-bottom: 1px solid var(--border-color);
   border-radius: 0;
@@ -345,32 +426,55 @@ function submit(): void {
 }
 
 .export-dialog__section h3 {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: #334155;
   font-size: 13px;
 }
 
 .export-dialog__field {
   display: grid;
-  gap: 7px;
-  margin-top: 14px;
+  gap: 6px;
+  margin-top: 10px;
   color: #64748b;
   font-size: 12px;
 }
 
+.export-dialog__file-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: end;
+}
+
 .export-dialog__format-row {
-  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.export-dialog__file-name {
+  margin-top: 0;
+}
+
+.export-dialog__grouped {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.export-dialog__grouped-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .export-dialog__query {
-  margin-top: 14px;
+  margin-top: 10px;
   color: var(--text-muted);
   font-size: 12px;
 }
 
 .export-dialog__query pre {
   overflow: auto;
-  max-height: 120px;
+  max-height: 80px;
   margin: 7px 0 0;
   padding: 10px 12px;
   color: #334155;
@@ -393,12 +497,12 @@ function submit(): void {
 
 .export-dialog__checks {
   display: grid;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .export-dialog__notice {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .export-dialog__footer {
@@ -420,6 +524,10 @@ function submit(): void {
 }
 
 @media (max-width: 640px) {
+  .export-dialog__file-row {
+    grid-template-columns: 1fr;
+  }
+
   .export-dialog__options-grid {
     grid-template-columns: 1fr;
     gap: 12px;

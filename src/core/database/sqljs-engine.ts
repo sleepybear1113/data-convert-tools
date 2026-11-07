@@ -6,6 +6,7 @@ import initSqlJs, {
 } from 'sql.js'
 
 import type { Diagnostic } from '../model/diagnostic'
+import { METADATA_TABLE_NAME, parseTableMetadata } from '../model/metadata-store'
 import type { TableRow } from '../model/table'
 import type { DatabaseEngine } from './engine'
 import type {
@@ -212,7 +213,7 @@ export class SqlJsEngine implements DatabaseEngine {
   async getSchema(): Promise<DatabaseSchema> {
     const database = this.requireDatabase()
     const objects = database.exec(`
-      SELECT name
+      SELECT name, type
       FROM sqlite_master
       WHERE type IN ('table', 'view')
         AND substr(name, 1, 6) <> '__dct_'
@@ -220,10 +221,21 @@ export class SqlJsEngine implements DatabaseEngine {
       ORDER BY name COLLATE NOCASE, name
     `)
 
-    const names = objects[0]?.values.map(([name]) => String(name)) ?? []
-    const tables = names.map((name) => {
+    const rows = objects[0]?.values ?? []
+    const sourceFileNames = this.readSourceFileNames()
+    const tables = rows.map(([rawName]) => {
+      const name = String(rawName)
       const info = database.exec(`PRAGMA table_info(${quoteIdentifier(name)})`)
       const values = info[0]?.values ?? []
+      const countStatement = database.prepare(
+        `SELECT COUNT(*) FROM ${quoteIdentifier(name)}`,
+      )
+      let rowCount = 0
+      try {
+        if (countStatement.step()) rowCount = Number(countStatement.get([])[0])
+      } finally {
+        countStatement.free()
+      }
       return {
         name,
         columns: values.map((column) => ({
@@ -232,10 +244,40 @@ export class SqlJsEngine implements DatabaseEngine {
           nullable: Number(column[3]) === 0,
           primaryKey: Number(column[5]) > 0,
         })),
+        rowCount,
+        ...(sourceFileNames.get(name.toLowerCase())
+          ? { sourceFileName: sourceFileNames.get(name.toLowerCase()) }
+          : {}),
       }
     })
 
     return { tables }
+  }
+
+  /** 读取导入元数据中的来源文件名（表名小写 → 文件名）。元数据表不存在时返回空表。 */
+  private readSourceFileNames(): Map<string, string> {
+    const database = this.requireDatabase()
+    const names = new Map<string, string>()
+    try {
+      const info = database.exec(
+        `SELECT table_name, payload FROM ${quoteIdentifier(METADATA_TABLE_NAME)}`,
+      )
+      for (const row of info[0]?.values ?? []) {
+        const tableName = row[0]
+        const payload = row[1]
+        if (typeof tableName !== 'string' || typeof payload !== 'string') continue
+        try {
+          const source = parseTableMetadata(payload).source
+          const fileName = source && 'fileName' in source ? source.fileName : undefined
+          if (fileName) names.set(tableName.toLowerCase(), fileName)
+        } catch {
+          // 单条元数据损坏不应影响整体 schema 读取。
+        }
+      }
+    } catch {
+      // 元数据表不存在（未导入过文件）时静默返回空表。
+    }
+    return names
   }
 
   async exportDatabase(): Promise<Uint8Array> {

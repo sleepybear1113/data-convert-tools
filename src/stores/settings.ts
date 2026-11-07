@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
 export const useSettingsStore = defineStore('settings', () => {
-  const pageSize = ref(200)
+  const pageSize = ref(100)
   const defaultEncoding = ref('auto')
   const strictDbfImport = ref(true)
   const strictDbfExport = ref(true)

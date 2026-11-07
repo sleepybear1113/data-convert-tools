@@ -22,6 +22,10 @@ const props = withDefaults(
     loading?: boolean
     disabled?: boolean
     error?: string | null
+    /** 源文件是否支持类型重新推断（CSV/XLSX）；DBF 的类型来自字段定义，无需推断。 */
+    supportsTypeInference?: boolean
+    /** 正在执行深度类型检测。 */
+    detecting?: boolean
   }>(),
   {
     modelValue: () => [],
@@ -29,6 +33,8 @@ const props = withDefaults(
     loading: false,
     disabled: false,
     error: null,
+    supportsTypeInference: false,
+    detecting: false,
   },
 )
 
@@ -37,6 +43,8 @@ const emit = defineEmits<{
   'update:targetTableName': [name: string]
   submit: [mapping: ImportMapping]
   cancel: []
+  /** 请求按指定行数（null = 全部行）重新检测列类型。 */
+  'detect-types': [limit: number | null]
 }>()
 
 const typeOptions: Array<{ label: string; value: ColumnDataType }> = [
@@ -241,6 +249,42 @@ function reset(): void {
   updateTableName(props.sourceSchema.name)
 }
 
+/** 一键把所有列的目标类型设为文本（保留各列 DBF 长度来源）。 */
+function setAllText(): void {
+  publish(mappings.value.map((column) => {
+    const source = props.sourceSchema.columns[column.sourceIndex]
+    return {
+      ...column,
+      targetType: 'string' as const,
+      ...defaultDbfMapping('string', source?.source?.size, source?.source?.decimalPlaces),
+    }
+  }))
+}
+
+/** 深度类型检测的行数：默认前 2000 行；勾选「全部」时传 null。 */
+const detectLimit = ref<number | null>(2000)
+const detectAllRows = ref(false)
+
+function requestDetectTypes(): void {
+  if (props.detecting || props.disabled || props.loading) return
+  if (!detectAllRows.value && detectLimit.value === null) return
+  emit('detect-types', detectAllRows.value ? null : detectLimit.value)
+}
+
+/** 应用父层返回的深度检测结果（与源 schema 列顺序对齐）。 */
+function applyInferredTypes(dataTypes: readonly ColumnDataType[]): void {
+  publish(mappings.value.map((column) => {
+    const type = dataTypes[column.sourceIndex]
+    if (!type) return column
+    const source = props.sourceSchema.columns[column.sourceIndex]
+    return {
+      ...column,
+      targetType: type,
+      ...defaultDbfMapping(type, source?.source?.size, source?.source?.decimalPlaces),
+    }
+  }))
+}
+
 function submit(): void {
   if (validationErrors.value.length || props.disabled || props.loading) return
   emit('submit', {
@@ -253,7 +297,7 @@ function submit(): void {
   })
 }
 
-defineExpose({ reset })
+defineExpose({ reset, applyInferredTypes })
 </script>
 
 <template>
@@ -279,6 +323,45 @@ defineExpose({ reset })
         @update:value="updateTableName"
       />
     </label>
+
+    <div class="mapping-editor__tools">
+      <n-button
+        size="small"
+        :disabled="disabled || loading || detecting || !mappings.length"
+        @click="setAllText"
+      >
+        全部设为文本
+      </n-button>
+      <template v-if="supportsTypeInference">
+        <n-button
+          size="small"
+          type="primary"
+          secondary
+          :loading="detecting"
+          :disabled="disabled || loading || !mappings.length || (!detectAllRows && detectLimit === null)"
+          title="按下方设置的行数重新解析源文件并推断各列类型"
+          @click="requestDetectTypes"
+        >
+          重新检测类型
+        </n-button>
+        <span class="mapping-editor__tool-label">检测行数</span>
+        <n-input-number
+          v-model:value="detectLimit"
+          size="small"
+          :min="1"
+          :max="10000000"
+          :precision="0"
+          :disabled="detectAllRows || disabled || loading || detecting"
+          class="mapping-editor__tool-limit"
+        />
+        <n-checkbox
+          v-model:checked="detectAllRows"
+          :disabled="disabled || loading || detecting"
+        >
+          检测全部行
+        </n-checkbox>
+      </template>
+    </div>
 
     <n-alert v-if="error" type="error" class="mapping-editor__alert">{{ error }}</n-alert>
     <n-alert v-if="validationErrors.length" type="warning" class="mapping-editor__alert" title="请先修正映射">
@@ -422,6 +505,23 @@ defineExpose({ reset })
   margin-top: 16px;
   color: #475569;
   font-size: 13px;
+}
+
+.mapping-editor__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mapping-editor__tool-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mapping-editor__tool-limit {
+  width: 120px;
 }
 
 .mapping-editor__alert {

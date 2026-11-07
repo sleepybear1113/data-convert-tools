@@ -37,4 +37,9 @@ export interface ExportOptions {
   delimiter?: string
   lineEnding?: '\n' | '\r\n'
   columns?: readonly ColumnMapping[]
+  /**
+   * 按这些列的值把数据拆分成多份，每份单独生成一个文件并打包为 ZIP。
+   * 仅支持数据表 / 查询来源；fileName 应为 .zip 归档名。
+   */
+  groupBy?: readonly string[]
 }

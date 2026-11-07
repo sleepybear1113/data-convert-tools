@@ -7,6 +7,7 @@ import type { XlsxReadOptions } from '../core/formats/xlsx'
 import type { ImportMapping } from '../core/model/conversion'
 import type { Diagnostic } from '../core/model/diagnostic'
 import type { TableRow, TableSchema } from '../core/model/table'
+import type { ColumnDataType } from '../core/model/table'
 import type { TablePreview, WorkspaceImportResult } from '../core/model/work'
 import { applyImportMapping } from './apply-mapping'
 import type { MappableTableSource } from './apply-mapping'
@@ -79,6 +80,32 @@ export async function importCsvIntoSqlite(
 ): Promise<WorkspaceImportResult> {
   const source = openCsvSource(buffer, options, tableName, fileName)
   return importSource(engine, source, mapping)
+}
+
+/** 按指定行数上限重新解析源数据并推断各列类型（null 表示全部行）。 */
+export function inferCsvColumnTypes(
+  buffer: ArrayBuffer,
+  options: CsvReadOptions,
+  limit: number | null,
+): { dataTypes: ColumnDataType[] } {
+  const result = readCsv(buffer, {
+    ...options,
+    sampleSize: limit ?? undefined,
+    skipEmptyLines: options.skipEmptyLines ?? 'greedy',
+  })
+  const inferred = inferTable(result.schema, result.rows, { mode: 'full' })
+  return { dataTypes: inferred.schema.columns.map((column) => column.dataType) }
+}
+
+export function inferXlsxColumnTypes(
+  buffer: ArrayBuffer,
+  options: XlsxReadOptions,
+  limit: number | null,
+): { dataTypes: ColumnDataType[] } {
+  const result = readXlsx(buffer, options)
+  const rows = limit === null ? result.rows : result.rows.slice(0, limit)
+  const inferred = inferTable(result.schema, rows, { mode: 'full' })
+  return { dataTypes: inferred.schema.columns.map((column) => column.dataType) }
 }
 
 interface ArraySource extends MappableTableSource {

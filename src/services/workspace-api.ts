@@ -8,6 +8,7 @@ import type { DbfReadOptions } from '../core/dbf/types'
 import type { CsvReadOptions } from '../core/formats/csv'
 import type { XlsxReadOptions } from '../core/formats/xlsx'
 import type { ImportMapping } from '../core/model/conversion'
+import type { ColumnDataType } from '../core/model/table'
 import type { ExportFileResult, TablePreview, WorkspaceImportResult } from '../core/model/work'
 import { DataWorkerClient } from '../workers/worker-client'
 import type { RuntimeExportOptions } from '../workers/export'
@@ -39,10 +40,16 @@ export interface WorkspaceApi {
     importOptions?: ImportRequestOptions,
     fileName?: string,
   ): Promise<WorkspaceImportResult>
+  /** 按行数上限（null = 全部）重新推断 CSV 列类型。 */
+  inferCsvTypes(buffer: ArrayBuffer, options: CsvReadOptions, limit: number | null): Promise<{ dataTypes: readonly ColumnDataType[] }>
+  /** 按行数上限（null = 全部）重新推断 XLSX 列类型。 */
+  inferXlsxTypes(buffer: ArrayBuffer, options: XlsxReadOptions, limit: number | null): Promise<{ dataTypes: readonly ColumnDataType[] }>
   openSqlite(bytes: Uint8Array): Promise<DatabaseSchema>
   executeSql(sql: string): Promise<SqlExecutionResult>
   getResultPage(request: ResultPageRequest): Promise<QueryResultPage>
   getSchema(): Promise<DatabaseSchema>
+  dropTable(tableName: string): Promise<DatabaseSchema>
+  renameTable(tableName: string, newName: string): Promise<DatabaseSchema>
   export(options: RuntimeExportOptions): Promise<ExportFileResult>
   exportSqlite(): Promise<Uint8Array>
   reset(): Promise<void>
@@ -106,6 +113,14 @@ export class WorkerWorkspaceApi implements WorkspaceApi {
     })
   }
 
+  inferCsvTypes(buffer: ArrayBuffer, options: CsvReadOptions, limit: number | null): Promise<{ dataTypes: readonly ColumnDataType[] }> {
+    return this.client.request('csv:infer-types', { buffer, options: { ...options }, limit })
+  }
+
+  inferXlsxTypes(buffer: ArrayBuffer, options: XlsxReadOptions, limit: number | null): Promise<{ dataTypes: readonly ColumnDataType[] }> {
+    return this.client.request('xlsx:infer-types', { buffer, options: cloneXlsxOptions(options), limit })
+  }
+
   openSqlite(bytes: Uint8Array): Promise<DatabaseSchema> {
     return this.client.request('sqlite:open', { bytes })
   }
@@ -120,6 +135,14 @@ export class WorkerWorkspaceApi implements WorkspaceApi {
 
   getSchema(): Promise<DatabaseSchema> {
     return this.client.request('sqlite:schema', {})
+  }
+
+  dropTable(tableName: string): Promise<DatabaseSchema> {
+    return this.client.request('sqlite:drop-table', { tableName })
+  }
+
+  renameTable(tableName: string, newName: string): Promise<DatabaseSchema> {
+    return this.client.request('sqlite:rename-table', { tableName, newName })
   }
 
   export(options: RuntimeExportOptions): Promise<ExportFileResult> {

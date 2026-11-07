@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -32,7 +32,11 @@ const emit = defineEmits<{
   select: [tableName: string]
   preview: [tableName: string]
   insert: [text: string]
+  /** 点击表名（排除折叠 / 查询 / 改名 / 删除按钮区域）时，把表名插入 SQL 编辑器。 */
+  'insert-table': [tableName: string]
   refresh: []
+  remove: [tableName: string]
+  rename: [payload: { tableName: string; newName: string }]
 }>()
 
 const search = ref('')
@@ -71,9 +75,46 @@ function toggle(tableName: string): void {
 
 function select(tableName: string): void {
   emit('select', tableName)
+  emit('insert-table', tableName)
   const next = new Set(collapsed.value)
   next.delete(tableName)
   collapsed.value = next
+}
+
+function formatRowCount(rowCount: number | undefined): string {
+  return rowCount === undefined ? '' : rowCount.toLocaleString()
+}
+
+/** 内联重命名状态：同一时间只有一行处于编辑中。 */
+const renamingTable = ref<string | null>(null)
+const renameValue = ref('')
+const renameInputRef = ref<InstanceType<typeof NInput> | null>(null)
+
+async function startRename(tableName: string): Promise<void> {
+  renamingTable.value = tableName
+  renameValue.value = tableName
+  await nextTick()
+  // n-input 的 focus 在不同版本可能未暴露；兜底聚焦内部 input 元素。
+  const inputInstance = renameInputRef.value as { focus?: () => void } | null
+  if (typeof inputInstance?.focus === 'function') {
+    inputInstance.focus()
+  } else {
+    document.querySelector<HTMLInputElement>('.schema-navigator__rename-input input')?.focus()
+  }
+}
+
+function cancelRename(): void {
+  renamingTable.value = null
+  renameValue.value = ''
+}
+
+function confirmRename(): void {
+  const tableName = renamingTable.value
+  const newName = renameValue.value.trim()
+  if (!tableName) return
+  cancelRename()
+  if (!newName || newName === tableName) return
+  emit('rename', { tableName, newName })
 }
 
 /**
@@ -185,15 +226,56 @@ function onFieldGripKeydown(event: KeyboardEvent): void {
           >
             {{ isExpanded(table.name) ? '▾' : '▸' }}
           </button>
+          <template v-if="renamingTable === table.name">
+            <n-input
+              ref="renameInputRef"
+              v-model:value="renameValue"
+              class="schema-navigator__rename-input"
+              size="small"
+              :maxlength="64"
+              :disabled="loading"
+              :title="`回车确认，Esc 取消（原表名：${table.name}）`"
+              placeholder="新的表名"
+              aria-label="重命名数据表"
+              @keyup.enter="confirmRename"
+              @keyup.escape="cancelRename"
+              @blur="confirmRename"
+            />
+          </template>
           <button
+            v-else
             type="button"
             class="schema-navigator__table-select"
             :title="table.name"
             @click="select(table.name)"
           >
             <span>{{ table.name }}</span>
-            <small>{{ table.columns.length }} 列</small>
+            <small>
+              {{ table.columns.length }} 列{{ table.rowCount === undefined ? '' : ` · ${formatRowCount(table.rowCount)} 行` }}
+            </small>
           </button>
+          <div class="schema-navigator__table-actions">
+            <button
+              type="button"
+              class="schema-navigator__table-action"
+              title="重命名数据表"
+              :aria-label="`重命名 ${table.name}`"
+              :disabled="loading || renamingTable !== null"
+              @click.stop="startRename(table.name)"
+            >
+              改名
+            </button>
+            <button
+              type="button"
+              class="schema-navigator__table-action schema-navigator__table-action--danger"
+              title="删除数据表（需要二次确认）"
+              :aria-label="`删除 ${table.name}`"
+              :disabled="loading"
+              @click.stop="emit('remove', table.name)"
+            >
+              删除
+            </button>
+          </div>
           <button
             type="button"
             class="schema-navigator__preview"
@@ -342,6 +424,45 @@ function onFieldGripKeydown(event: KeyboardEvent): void {
   padding: 5px 7px;
   color: #4c78d6;
   font-size: 11px;
+}
+
+.schema-navigator__rename-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.schema-navigator__table-actions {
+  display: flex;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.schema-navigator__table-row:hover .schema-navigator__table-actions,
+.schema-navigator__table-row:focus-within .schema-navigator__table-actions {
+  opacity: 1;
+}
+
+.schema-navigator__table-action {
+  padding: 5px 4px;
+  border: 0;
+  color: #94a3b8;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.schema-navigator__table-action:hover {
+  color: #4c78d6;
+}
+
+.schema-navigator__table-action--danger:hover {
+  color: #d03050;
+}
+
+.schema-navigator__table-action:disabled {
+  color: #cbd5e1;
+  cursor: default;
 }
 
 .schema-navigator__columns {

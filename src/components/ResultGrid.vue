@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
+  NCheckbox,
   NDataTable,
   NEmpty,
   NPagination,
@@ -45,7 +46,7 @@ const props = withDefaults(
     rows: () => [],
     offset: 0,
     totalRows: undefined,
-    pageSize: 200,
+    pageSize: 100,
     pageSizeOptions: () => [50, 100, 200, 500],
     loading: false,
     executed: false,
@@ -59,7 +60,48 @@ const props = withDefaults(
 const emit = defineEmits<{
   'page-change': [change: ResultPageChange]
   refresh: []
+  'group-columns-change': [columns: readonly string[]]
 }>()
+
+/**
+ * 分组导出列选择：开启后列头出现勾选框，勾选的列在导出弹窗中
+ * 可用于「按勾选列分组导出」。
+ */
+const groupMode = ref(false)
+const groupColumns = ref<string[]>([])
+
+watch(groupMode, (enabled) => {
+  if (!enabled) {
+    groupColumns.value = []
+    emit('group-columns-change', [])
+  }
+})
+
+// 查询结果变化（列集变化）时丢弃不再存在的勾选列。
+watch(
+  () => props.columns,
+  (columns) => {
+    const valid = new Set(columns)
+    const next = groupColumns.value.filter((name) => valid.has(name))
+    if (next.length !== groupColumns.value.length) {
+      groupColumns.value = next
+      emit('group-columns-change', [...next])
+    }
+  },
+)
+
+function toggleGroupMode(): void {
+  if (!props.columns.length) return
+  groupMode.value = !groupMode.value
+}
+
+function toggleGroupColumn(name: string, checked: boolean): void {
+  const next = checked
+    ? [...groupColumns.value, name]
+    : groupColumns.value.filter((column) => column !== name)
+  groupColumns.value = next
+  emit('group-columns-change', [...next])
+}
 
 const currentPage = computed(() => Math.floor(props.offset / props.pageSize) + 1)
 const effectiveTotal = computed(() => {
@@ -143,7 +185,18 @@ const tableColumns = computed<DataTableColumns<GridRow>>(() => [
     render: (row) => h('span', { class: 'row-number' }, row.id + 1),
   },
   ...props.columns.map((name, index) => ({
-    title: name || `列 ${index + 1}`,
+    title: () => {
+      if (!groupMode.value) return name || `列 ${index + 1}`
+      return h('span', { class: 'result-grid__group-head' }, [
+        h(NCheckbox, {
+          size: 'small',
+          checked: groupColumns.value.includes(name),
+          onUpdateChecked: (checked: boolean) => toggleGroupColumn(name, checked),
+          onClick: (event: MouseEvent) => event.stopPropagation(),
+        }),
+        h('span', { class: 'result-grid__group-head-label' }, name || `列 ${index + 1}`),
+      ])
+    },
     key: `column_${index}`,
     minWidth: 140,
     ellipsis: { tooltip: true },
@@ -178,6 +231,22 @@ function changePageSize(pageSize: number): void {
         </span>
         <span v-if="rowsAffected !== null && rowsAffected !== undefined" class="result-grid__metric">
           影响 {{ rowsAffected }} 行
+        </span>
+        <n-button
+          size="tiny"
+          :type="groupMode ? 'primary' : 'default'"
+          :quaternary="!groupMode"
+          :disabled="!columns.length"
+          title="勾选需要分组的列，之后可在导出弹窗中选择「按勾选列分组导出」"
+          @click="toggleGroupMode"
+        >
+          分组导出列
+        </n-button>
+        <span v-if="groupMode && groupColumns.length" class="result-grid__metric">
+          已选 {{ groupColumns.length }} 列
+        </span>
+        <span v-if="groupMode && !groupColumns.length" class="result-grid__metric">
+          在列头勾选分组依据列
         </span>
       </div>
       <span class="result-grid__range">{{ rangeText }}</span>
@@ -321,6 +390,19 @@ function changePageSize(pageSize: number): void {
 :deep(.row-number) {
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
+}
+
+.result-grid__group-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.result-grid__group-head-label {
+  overflow: hidden;
+  max-width: 220px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {

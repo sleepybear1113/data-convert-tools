@@ -8,6 +8,7 @@ import type { DbfReadOptions } from '../core/dbf/types'
 import type { CsvReadOptions } from '../core/formats/csv'
 import type { XlsxReadOptions } from '../core/formats/xlsx'
 import type { ExportOptions, ImportMapping } from '../core/model/conversion'
+import type { ColumnDataType } from '../core/model/table'
 import type { ExportFileResult, TablePreview, WorkspaceImportResult } from '../core/model/work'
 
 interface RequestEnvelope<TType, TPayload> {
@@ -35,10 +36,14 @@ export type WorkerRequest =
   | RequestEnvelope<'xlsx:import', FilePayload & ImportOptions<XlsxReadOptions>>
   | RequestEnvelope<'csv:preview', FilePayload & { options: CsvReadOptions }>
   | RequestEnvelope<'csv:import', FilePayload & ImportOptions<CsvReadOptions>>
+  | RequestEnvelope<'csv:infer-types', { buffer: ArrayBuffer; options: CsvReadOptions; limit: number | null }>
+  | RequestEnvelope<'xlsx:infer-types', { buffer: ArrayBuffer; options: XlsxReadOptions; limit: number | null }>
   | RequestEnvelope<'sqlite:open', { bytes: Uint8Array }>
   | RequestEnvelope<'sqlite:execute', { sql: string }>
   | RequestEnvelope<'sqlite:page', ResultPageRequest>
   | RequestEnvelope<'sqlite:schema', Record<string, never>>
+  | RequestEnvelope<'sqlite:drop-table', { tableName: string }>
+  | RequestEnvelope<'sqlite:rename-table', { tableName: string; newName: string }>
   | RequestEnvelope<'export:start', { options: ExportOptions }>
 
 export type WorkerRequestType = WorkerRequest['type']
@@ -55,10 +60,14 @@ export interface WorkerResultMap {
   'xlsx:import': WorkspaceImportResult
   'csv:preview': TablePreview
   'csv:import': WorkspaceImportResult
+  'csv:infer-types': { dataTypes: readonly ColumnDataType[] }
+  'xlsx:infer-types': { dataTypes: readonly ColumnDataType[] }
   'sqlite:open': DatabaseSchema
   'sqlite:execute': SqlExecutionResult
   'sqlite:page': QueryResultPage
   'sqlite:schema': DatabaseSchema
+  'sqlite:drop-table': DatabaseSchema
+  'sqlite:rename-table': DatabaseSchema
   'export:start': ExportFileResult
 }
 

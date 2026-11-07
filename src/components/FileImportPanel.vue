@@ -218,7 +218,7 @@ function submit(): void {
   emit('submit', request)
 }
 
-defineExpose({ reset, clearFile })
+defineExpose({ reset, clearFile, setFile })
 </script>
 
 <template>

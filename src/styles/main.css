@@ -68,18 +68,12 @@ button:focus-visible,
   gap: 12px;
 }
 
-.workspace__brand-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  color: #fff;
+/* 文件拖入侧边栏时的目标区域高亮。 */
+.workspace__sidebar--drop .schema-navigator {
+  outline: 2px dashed #4c70c9;
+  outline-offset: 2px;
   border-radius: 10px;
-  background: #405fa9;
-  box-shadow: 0 5px 14px rgb(64 95 169 / 20%);
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: 0.5px;
+  background: #f0f5ff;
 }
 
 .workspace__header h1,
@@ -318,10 +312,6 @@ section.panel,
 @media (max-width: 520px) {
   .workspace {
     padding: 12px;
-  }
-
-  .workspace__brand-mark {
-    display: none;
   }
 
   .workspace__toolbar .n-button {

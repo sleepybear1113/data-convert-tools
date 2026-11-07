@@ -8,7 +8,7 @@ import type {
 } from '../core/database/query'
 import type { Diagnostic } from '../core/model/diagnostic'
 import type { ImportMapping } from '../core/model/conversion'
-import type { TableSchema } from '../core/model/table'
+import type { ColumnDataType, TableSchema } from '../core/model/table'
 import type {
   FileImportRequest,
   WorkspaceExportOptions,
@@ -51,6 +51,19 @@ export interface WorkspaceIntegration {
   executeSql?(sql: string): Promise<SqlExecutionResult>
   getResultPage?(request: ResultPageRequest): Promise<QueryResultPage>
   getSchema?(): Promise<DatabaseSchema>
+  /** 删除数据表（含视图）；返回删除后的最新 schema。 */
+  deleteTable?(tableName: string): Promise<WorkspaceOperationResult | void>
+  /** 重命名数据表；返回重命名后的最新 schema。 */
+  renameTable?(tableName: string, newName: string): Promise<WorkspaceOperationResult | void>
+  /**
+   * 按指定行数（null = 全部）对源文件重新做类型推断；仅支持 CSV/XLSX。
+   * 返回与源 schema 列顺序对齐的类型数组。
+   */
+  inferSourceTypes?(
+    request: FileImportRequest,
+    context: unknown,
+    limit: number | null,
+  ): Promise<{ dataTypes: readonly ColumnDataType[] }>
   exportData?(options: WorkspaceExportOptions): Promise<void>
 }
 

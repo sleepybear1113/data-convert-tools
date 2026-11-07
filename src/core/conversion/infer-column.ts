@@ -94,7 +94,12 @@ function numericObservation(value: string | number | bigint, rowIndex: number): 
 
   if (typeof value === 'bigint') return { type: 'integer', rowIndex, decimal }
   if (typeof value === 'number') {
-    return { type: Number.isInteger(value) ? 'integer' : 'float', rowIndex, decimal }
+    // 只有安全整数范围内的整数值才判定为 integer；1e31 等超出精确表示
+    // 范围（或带小数部分）的数值一律按 float 处理，避免精度丢失。
+    const type: ObservedType = Number.isInteger(value) && Number.isSafeInteger(value)
+      ? 'integer'
+      : 'float'
+    return { type, rowIndex, decimal }
   }
 
   const trimmed = value.trim()

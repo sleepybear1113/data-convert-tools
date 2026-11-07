@@ -2,7 +2,7 @@ import type { FileImportRequest } from '../components/contracts'
 import type { DbfReadOptions } from '../core/dbf/types'
 import type { CsvReadOptions } from '../core/formats/csv'
 import type { TablePreview } from '../core/model/work'
-import { uniqueName } from '../core/utils/identifiers'
+import { baseTableNameFromFile, uniqueName } from '../core/utils/identifiers'
 import type { WorkspaceImportPreparation, WorkspaceIntegration } from '../views/workspace-integration'
 import type { WorkspaceApi } from './workspace-api'
 import { downloadExport } from './file-save'
@@ -15,9 +15,15 @@ interface PendingImportContext {
 }
 
 export function createWorkspaceIntegration(api: WorkspaceApi): WorkspaceIntegration {
-  async function defaultTableName(): Promise<string> {
+  /** 默认表名取导入文件名（去扩展名）；同名时追加 _1、_2 后缀。 */
+  async function defaultTableName(fileName: string): Promise<string> {
     const schema = await api.getSchema()
-    return uniqueName('imported_data', new Set(schema.tables.map((table) => table.name)))
+    const base = baseTableNameFromFile(fileName)
+    return uniqueName(
+      base,
+      new Set(schema.tables.map((table) => table.name.toLowerCase())),
+      { startSuffix: 1, caseInsensitive: true },
+    )
   }
 
   async function prepareImport(request: FileImportRequest): Promise<WorkspaceImportPreparation> {
@@ -40,7 +46,7 @@ export function createWorkspaceIntegration(api: WorkspaceApi): WorkspaceIntegrat
 
     return {
       sourceSchema: preview.schema,
-      targetTableName: await defaultTableName(),
+      targetTableName: await defaultTableName(fileName),
       context: { request, buffer, preview } satisfies PendingImportContext,
     }
   }
@@ -61,7 +67,7 @@ export function createWorkspaceIntegration(api: WorkspaceApi): WorkspaceIntegrat
         : undefined
       const buffer = pending?.buffer ?? await readFileBuffer(request.file)
       const importOptions = {
-        tableName: mapping?.targetTableName ?? await defaultTableName(),
+        tableName: mapping?.targetTableName ?? await defaultTableName(request.file.name),
         mapping,
       }
       const fileName = request.file.name
@@ -86,6 +92,26 @@ export function createWorkspaceIntegration(api: WorkspaceApi): WorkspaceIntegrat
     executeSql: (sql) => api.executeSql(sql),
     getResultPage: (request) => api.getResultPage(request),
     getSchema: () => api.getSchema(),
+    async deleteTable(tableName) {
+      const schema = await api.dropTable(tableName)
+      return { schema }
+    },
+    async renameTable(tableName, newName) {
+      const schema = await api.renameTable(tableName, newName)
+      return { schema, activeTableName: newName }
+    },
+    async inferSourceTypes(request, context, limit) {
+      if (request.format === 'sqlite' || request.format === 'dbf') {
+        throw new Error('Type re-inference only applies to CSV and XLSX sources')
+      }
+      const pending = isPendingContext(context) && context.request.file === request.file
+        ? context
+        : undefined
+      const buffer = pending?.buffer ?? await readFileBuffer(request.file)
+      return request.format === 'csv'
+        ? api.inferCsvTypes(buffer, csvOptions(request.options), limit)
+        : api.inferXlsxTypes(buffer, request.options, limit)
+    },
     async exportData(options) {
       const result = await api.export(options)
       downloadExport(result)

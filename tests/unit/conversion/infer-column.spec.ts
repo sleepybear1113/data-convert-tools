@@ -93,6 +93,18 @@ describe('column inference - leading zeros, nulls, mixed types and dates', () =>
     expect(result.requiresDecimalText).toBe(true)
   })
 
+  it('never classifies unsafe numeric values as integer', () => {
+    // 1e31 无小数部分，但远超安全整数范围：必须判为 float 而不是 integer。
+    expect(inferColumn([1e31]).dataType).toBe('float')
+    // 2^53 之上的整数数值不再保证精确：按 float 处理。
+    expect(inferColumn([1e16]).dataType).toBe('float')
+    // 安全范围内的整数仍为 integer。
+    expect(inferColumn([1e15]).dataType).toBe('integer')
+    expect(inferColumn([42]).dataType).toBe('integer')
+    // 字符串形式的科学计数法保持 decimal（TEXT 存储、精度无损）。
+    expect(inferColumn(['1e31']).dataType).toBe('decimal')
+  })
+
   it('falls back to TEXT with a locatable warning for incompatible mixed values', () => {
     const result = inferColumn(['2024-01-01', '2024-01-02', 42])
     expect(result.dataType).toBe('string')
