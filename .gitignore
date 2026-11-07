@@ -47,6 +47,9 @@ pnpm-debug.log*
 /exports/
 
 # Local third-party archives and tools
-# 换机后按 README.md 恢复，不默认提交二进制安装包。
+# SheetJS 固定版本安装包随仓库提交（服务器克隆后可直接 npm ci 部署，不依赖外部 CDN）
 /*.tgz
-/third_party/
+/third_party/*
+!/third_party/sheetjs/
+/third_party/sheetjs/*
+!/third_party/sheetjs/xlsx-0.20.3.tgz

@@ -24,7 +24,7 @@
 | CodeMirror | 6.0.2 | CodeMirror 6 系列 |
 | @codemirror/lang-sql | 6.10.0 | 提供 SQLite 方言及 Schema 补全 |
 | sql.js | 1.15.2 | 浏览器/Node WASM 引擎，与 Vue 无耦合 |
-| SheetJS `xlsx` | 0.20.3 | 使用项目本地官方 tgz，不经过 npm latest |
+| SheetJS `xlsx` | 0.20.3 | 使用项目本地官方 tgz（随仓库提交），不经过 npm latest |
 | Papa Parse | 5.7.0 | 浏览器 CSV 解析 |
 | iconv-lite | 0.7.3 | 自带类型声明；浏览器端配合最小 Buffer polyfill |
 | buffer | 6.0.3 | 仅用于 iconv-lite 的浏览器 Buffer 兼容 |

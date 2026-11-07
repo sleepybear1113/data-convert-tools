@@ -124,7 +124,7 @@ data-convert-tools/
 │  ├─ e2e/
 │  └─ fixtures/                  # 脱敏、最小化、可提交的测试样本
 ├─ scripts/
-├─ third_party/                  # 本地第三方包，默认不提交
+├─ third_party/                  # SheetJS 固定版本安装包（随仓库提交）
 │  └─ sheetjs/
 │     └─ xlsx-0.20.3.tgz
 ├─ sample-data/                  # 本地源样本，默认不提交
@@ -203,7 +203,7 @@ types:        types/index.d.ts
 }
 ```
 
-若换机或文件丢失，可从 SheetJS 官方 CDN 恢复：
+该安装包已随仓库提交（服务器克隆后 `npm ci` 即可安装，无需外部网络）。若需要升级版本，可从 SheetJS 官方 CDN 下载新版本并替换：
 
 ```text
 https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
@@ -490,12 +490,12 @@ JS 自己写入、自己读取成功主要证明内部一致性，因此二进�
 - `node_modules/`、`dist/`、测试报告和缓存；
 - 本机环境路径说明；
 - `sample-data/` 中的真实数据；
-- 根目录 `.tgz` 和 `third_party/` 中的本地第三方包；
+- 根目录 `.tgz`（`third_party/sheetjs/` 中 SheetJS 固定版本安装包已随仓库提交）；
 - 本地导出结果和日志。
 
 不要全局忽略所有 `.dbf`、`.xlsx`、`.sqlite` 文件，否则脱敏后的最小测试样本也无法提交。
 
-换机后需要根据本文恢复 Node.js、SheetJS 压缩包和本地测试数据，再执行 `npm ci` 或 `npm install`。
+换机后只需要恢复 Node.js 和本地测试数据，再执行 `npm ci` 或 `npm install`（SheetJS 安装包已随仓库提交，无需单独恢复）。
 
 ## 12. 首版实施结果与后续可选项
 
