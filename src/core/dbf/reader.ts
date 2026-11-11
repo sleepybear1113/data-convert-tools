@@ -1,6 +1,6 @@
 import type { CellValue } from '../model/value'
 import type { Diagnostic } from '../model/diagnostic'
-import { ascii, readNullTerminatedAscii } from './binary'
+import { ascii } from './binary'
 import {
   dateTimeFromJulian,
   formatDbfDateTime,
@@ -10,6 +10,7 @@ import {
 import {
   assertDbfEncoding,
   decodeDbfText,
+  decodeNullTerminatedText,
   DEFAULT_DBF_ENCODING,
   encodingForLanguageDriver,
   isLosslessDecoding,
@@ -71,7 +72,10 @@ function decodeField(
     case 'N':
     case 'F': {
       const text = ascii(raw).replace(/^[ \0]+|[ \0]+$/g, '')
-      return text === '' ? null : decimalFromNumericField(text).cellValue
+      // 全空格/全 null 的数值字段表示"未填写"（真实 DBF 常见），按 NULL 处理，
+      // 与 D/L/T 字段的空值行为保持一致，不再走无效值警告。
+      if (text === '') return null
+      return decimalFromNumericField(text).cellValue
     }
     case 'Y':
       return decimalFromCurrency(view.getBigInt64(start, true)).cellValue
@@ -145,7 +149,8 @@ export class ArrayBufferDbfReader implements DbfReader {
       const type = (FIELD_TYPES.has(rawType) ? rawType : 'unknown') as DbfFieldType
       const flags = bytes[descriptorOffset + 18]
       const field: DbfFieldDescriptor = {
-        name: readNullTerminatedAscii(bytes, descriptorOffset, 11).trim(),
+        // 字段名与数据一样按文件编码解码（LDID 0x7A 时为 GBK），中文名才不会乱码。
+        name: decodeNullTerminatedText(bytes, descriptorOffset, 11, encoding).trim(),
         type,
         length: bytes[descriptorOffset + 16],
         decimalPlaces: bytes[descriptorOffset + 17],
@@ -243,6 +248,37 @@ export class ArrayBufferDbfReader implements DbfReader {
         if (strict) throw new Error(message)
         diagnostics.push({ code: 'DBF_DATA_AFTER_TERMINATOR', severity: 'warning', message })
       }
+    }
+
+    // 预扫描：真实世界的 DBF 里，数值/日期/逻辑字段常以全空格表示"未填写"，
+    // 而字段描述符未必标记 nullable。观察到空值时把该字段升级为可空——
+    // 仅影响 schema/元数据输出；读取时的 nullBit 布局在此前已按原描述符
+    // 固定，升级不会造成 _NullFlags 位错位。
+    const scanTypes = new Set(['N', 'F', 'D', 'L', 'T'])
+    const upgraded: string[] = []
+    for (const layout of layouts) {
+      const field = layout.field
+      if (field.nullable || field.type === '0' || !scanTypes.has(field.type)) continue
+      let hasEmpty = false
+      for (let rowIndex = 0; rowIndex < recordsToRead && !hasEmpty; rowIndex += 1) {
+        const start = headerLength + rowIndex * recordLength + layout.offset
+        for (let byteIndex = 0; byteIndex < field.length; byteIndex += 1) {
+          const byte = bytes[start + byteIndex]
+          if (byte !== 0x20 && byte !== 0x00) break
+          if (byteIndex === field.length - 1) hasEmpty = true
+        }
+      }
+      if (hasEmpty) {
+        field.nullable = true
+        upgraded.push(field.name)
+      }
+    }
+    if (upgraded.length) {
+      diagnostics.push({
+        code: 'DBF_EMPTY_VALUES_NULLABLE',
+        severity: 'info',
+        message: `Fields with empty values were treated as nullable: ${upgraded.join(', ')}`,
+      })
     }
 
     const trailingHeader = bytes.slice(terminatorOffset + 1, headerLength)

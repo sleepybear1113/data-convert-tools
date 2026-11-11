@@ -62,3 +62,18 @@ export function encodeDbfTextTruncated(
 export function decodeDbfText(bytes: Uint8Array, encoding: string): string {
   return iconv.decode(bytes, encoding)
 }
+
+/** 读取 null 结尾的定长文本字段（DBF 字段名等），按指定编码解码。 */
+export function decodeNullTerminatedText(
+  bytes: Uint8Array,
+  start: number,
+  length: number,
+  encoding: string,
+): string {
+  let end = start
+  const limit = start + length
+  while (end < limit && bytes[end] !== 0) {
+    end += 1
+  }
+  return decodeDbfText(bytes.subarray(start, end), encoding)
+}

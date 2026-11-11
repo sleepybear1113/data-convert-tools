@@ -73,6 +73,32 @@ describe('ArrayBufferDbfWriter independent binary encoding', () => {
     expect((await collectRecords(read.records))[0].values).toEqual(binaryValues)
   })
 
+  it('writes and reads back GBK Chinese field names as exact bytes', async () => {
+    const fields: DbfFieldDescriptor[] = [
+      dbfField('学院确认', 'C', 14),
+      dbfField('学院有误说', 'C', 20),
+      dbfField('DS_H', 'N', 19, 4),
+    ].map((field) => ({ ...field, nullable: true, flags: (field.flags ?? 0) | 0x02 }))
+    const values: CellValue[] = ['是', '否', '1']
+
+    const bytes = await new ArrayBufferDbfWriter().write(
+      fields,
+      recordSource([dbfRecord(values)]),
+      { strict: true },
+    )
+    // 描述符里的字段名按 GBK 写出（"学" = 0xD1 0xA7），并以 null 结尾
+    expect(bytes[32]).toBe(0xd1)
+    expect(bytes[33]).toBe(0xa7)
+    expect(bytes[32 + 10]).toBe(0x00)
+    expect(bytes[32 + 32]).toBe(0xd1)
+
+    const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect(read.fields.map((field) => field.name)).toEqual(['学院确认', '学院有误说', 'DS_H', '_NullFlags'])
+    const records = await collectRecords(read.records)
+    // N 字段读回为数值；_NullFlags 系统字段的原样字节也会出现在原始值里（应用层会过滤 system 列）。
+    expect(records[0].values.slice(0, 3)).toEqual(['是', '否', 1])
+  })
+
   it('creates _NullFlags across byte boundaries for every supported nullable type', async () => {
     const fields = binaryFields(true)
     const allNull = Array<CellValue>(fields.length).fill(null)
@@ -174,6 +200,31 @@ describe('DBF writer strictness and GBK boundaries', () => {
     )
     const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
     expect((await collectRecords(read.records))[0].values).toEqual([1.24, 1])
+  })
+
+  it('writes integer values into decimal N fields without padding overflow', async () => {
+    // 回归：N(4,1) 写整数 110 曾被格式化为 "110.0"（5 字节）而溢出。
+    // 自然表示 "110" 才与源文件（" 110"）一致。
+    const fields = [dbfField('NK_XYSSY', 'N', 4, 1)]
+    const bytes = await new ArrayBufferDbfWriter().write(
+      fields,
+      recordSource([dbfRecord([110])]),
+      { strict: true },
+    )
+    const view = new DataView(bytes.buffer)
+    const recordOffset = view.getUint16(8, true) + 1
+    // 右对齐 " 110"，与原始 DBF 的存储字节一致
+    expect(new TextDecoder().decode(bytes.subarray(recordOffset, recordOffset + 4))).toBe(' 110')
+
+    // 小数值仍按实际小数位数写出
+    const withFraction = await new ArrayBufferDbfWriter().write(
+      fields,
+      recordSource([dbfRecord([11.5])]),
+      { strict: true },
+    )
+    const fractionView = new DataView(withFraction.buffer)
+    const fractionOffset = fractionView.getUint16(8, true) + 1
+    expect(new TextDecoder().decode(withFraction.subarray(fractionOffset, fractionOffset + 4))).toBe('11.5')
   })
 
   it('rejects non-nullable NULL, invalid dates and inconsistent strict source metadata', async () => {

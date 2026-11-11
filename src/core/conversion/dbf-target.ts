@@ -125,15 +125,15 @@ function textValue(value: CellValue): string | undefined {
   return typeof value === 'string' ? value : value.toString()
 }
 
-function encodedLength(value: string, encoding: string): number {
+export function encodedLength(value: string, encoding: string): number {
   return iconv.encode(value, encoding).length
 }
 
-function isEncodable(value: string, encoding: string): boolean {
+export function isEncodable(value: string, encoding: string): boolean {
   return iconv.decode(iconv.encode(value, encoding), encoding) === value
 }
 
-function truncateEncoded(value: string, maxBytes: number, encoding: string): string {
+export function truncateEncoded(value: string, maxBytes: number, encoding: string): string {
   let result = ''
   let bytes = 0
   for (const character of value) {
@@ -360,8 +360,12 @@ function validateAndCoerceValue(
     const compatible = !options.strict && options.allowTruncate
     location(compatible ? 'warning' : 'error', compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DECIMAL_OVERFLOW', `Numeric value in column ${column.name} exceeds ${column.decimalPlaces} decimal places`)
   }
-  const requiredLength = integerDigits(decimal) + (decimal.s < 0 ? 1 : 0) +
-    (column.decimalPlaces > 0 ? column.decimalPlaces + 1 : 0)
+  // 按舍入后数值的实际小数位数计算所需宽度：整数（如 110 写入 N(4,1)）不需要
+  // 小数点与小数位，不应被元数据里的 decimalPlaces 误判为溢出。
+  const rounded = decimal.toDecimalPlaces(column.decimalPlaces)
+  const fractionDigits = rounded.dp()
+  const requiredLength = integerDigits(rounded) + (rounded.s < 0 ? 1 : 0) +
+    (fractionDigits > 0 ? fractionDigits + 1 : 0)
   if (requiredLength > column.length) {
     location('error', 'DBF_NUMERIC_OVERFLOW', `Numeric value requires ${requiredLength} characters but column ${column.name} has length ${column.length}`)
   }

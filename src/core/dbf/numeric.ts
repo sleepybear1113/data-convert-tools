@@ -91,11 +91,24 @@ export function formatNumericField(
   if (strict && !rounded.eq(decimal)) {
     throw new Error(`${label} has more than ${decimalPlaces} decimal places`)
   }
-  const text = rounded.toFixed(decimalPlaces)
+  // 优先固定小数位格式（与 VFP 显示约定一致，如 N(20,4) 的 "1.5000"）；
+  // 若该格式放不下字段宽度，退回自然表示（整数不带小数点、去掉无效尾随零，
+  // 如 N(4,1) 的 110 写 "110" 而非 "110.0"），仍放不下才报溢出。
+  let text = rounded.toFixed(decimalPlaces)
+  if (text.length > length) {
+    text = normalizedDecimalText(rounded)
+  }
   if (text.length > length) {
     throw new Error(`${label} needs ${text.length} bytes but field width is ${length}`)
   }
   return text
+}
+
+function normalizedDecimalText(decimal: Decimal): string {
+  const text = decimal.toString()
+  // Decimal 对极大/极小值会使用指数表示，DBF 文本必须展开为定点表示。
+  if (!/e/i.test(text)) return text
+  return decimal.toFixed(decimal.dp())
 }
 
 export function integerFieldValue(

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import { ArrayBufferDbfReader } from '../../../src/core/dbf/reader'
+import { encodeDbfText } from '../../../src/core/dbf/encoding'
 import type { DbfFieldDescriptor } from '../../../src/core/dbf/types'
 import { collectRecords, dbfField, exactArrayBuffer } from './test-utils'
 
@@ -93,6 +94,78 @@ describe('ArrayBufferDbfReader independent binary decoding', () => {
       Math.PI,
     ])
     expect(records[0].raw).toHaveLength(result.header.recordLength)
+  })
+
+  it('decodes GBK Chinese field names via the language driver (LDID 0x7A)', async () => {
+    // 模拟真实场景：字段描述符里是 GBK 中文字段名（如"学院确认"），数据也是 GBK。
+    const fields: DbfFieldDescriptor[] = [
+      dbfField('学院确认', 'C', 8),
+      dbfField('BMXH', 'C', 5),
+    ]
+    const headerLength = 33 + fields.length * 32
+    const recordLength = 1 + fields.reduce((sum, field) => sum + field.length, 0)
+    const bytes = new Uint8Array(headerLength + recordLength + 1)
+    const view = new DataView(bytes.buffer)
+    bytes[0] = 0x30
+    view.setUint32(4, 1, true)
+    view.setUint16(8, headerLength, true)
+    view.setUint16(10, recordLength, true)
+    bytes[29] = 0x7a
+    fields.forEach((field, index) => {
+      const start = 32 + index * 32
+      bytes.set(encodeDbfText(field.name, 'gbk'), start)
+      bytes[start + 11] = field.type.charCodeAt(0)
+      bytes[start + 16] = field.length
+      bytes[start + 17] = field.decimalPlaces
+    })
+    bytes[32 + fields.length * 32] = 0x0d
+    const record = headerLength
+    bytes[record] = 0x20
+    bytes.set(encodeDbfText('是', 'gbk'), record + 1)
+    bytes.set(encodeDbfText('BM001', 'gbk'), record + 9)
+    bytes[bytes.length - 1] = 0x1a
+
+    const result = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect(result.fields.map((field) => field.name)).toEqual(['学院确认', 'BMXH'])
+    expect((await collectRecords(result.records))[0].values).toEqual(['是', 'BM001'])
+  })
+
+  it('treats blank numeric fields as NULL and upgrades the column to nullable', async () => {
+    // 真实场景：描述符未标记 nullable（flags=0），但数据以全空格表示"未填写"。
+    const fields: DbfFieldDescriptor[] = [
+      dbfField('NK_G', 'N', 1),
+      dbfField('XM', 'C', 4),
+    ]
+    const headerLength = 33 + fields.length * 32
+    const recordLength = 1 + fields.reduce((sum, field) => sum + field.length, 0)
+    const bytes = new Uint8Array(headerLength + recordLength + 1)
+    const view = new DataView(bytes.buffer)
+    bytes[0] = 0x30
+    view.setUint32(4, 1, true)
+    view.setUint16(8, headerLength, true)
+    view.setUint16(10, recordLength, true)
+    bytes[29] = 0x7a
+    fields.forEach((field, index) => {
+      const start = 32 + index * 32
+      bytes.set(encodeDbfText(field.name, 'gbk'), start)
+      bytes[start + 11] = field.type.charCodeAt(0)
+      bytes[start + 16] = field.length
+      bytes[start + 18] = 0 // flags=0：描述符标记为不可空
+    })
+    bytes[32 + fields.length * 32] = 0x0d
+    const record = headerLength
+    bytes[record] = 0x20
+    bytes[record + 1] = 0x20 // NK_G 全空格 = 未填写
+    bytes.set(encodeDbfText('姚尧', 'gbk'), record + 2)
+    bytes[bytes.length - 1] = 0x1a
+
+    const result = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect((await collectRecords(result.records))[0].values).toEqual([null, '姚尧'])
+    // 空值被干净地识别为 NULL，且字段升级为可空，不再产生无效值警告
+    expect(result.fields[0].nullable).toBe(true)
+    expect(result.fields[1].nullable).toBe(false)
+    expect(result.diagnostics.some((item) => item.code === 'DBF_EMPTY_VALUES_NULLABLE')).toBe(true)
+    expect(result.diagnostics.some((item) => item.code === 'DBF_INVALID_FIELD_VALUE')).toBe(false)
   })
 
   it('uses _NullFlags bits, honors headerLength/trailingHeader, and filters deleted records', async () => {

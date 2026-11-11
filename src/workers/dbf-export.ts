@@ -32,7 +32,9 @@ export async function writeOriginalDbfIfPossible(
       length: stored.length,
       decimalPlaces: stored.decimalPlaces,
       flags: stored.flags,
-      nullable: stored.nullable,
+      // 可空性按原始 flags 字节重建（忠实源文件）：源文件里"非可空字段 + 空白
+      // 内容"导出后仍是非可空 + 空白，而不是被升级为显式 .NULL.。
+      nullable: stored.flags === undefined ? stored.nullable : (stored.flags & 0x02) !== 0,
       system: stored.system,
     }
     fields.push(field)
@@ -77,5 +79,7 @@ export async function writeOriginalDbfIfPossible(
     languageDriver,
     strict: options.strict,
     trailingHeader: source.trailingHeader,
+    // 非可空字段的 NULL 还原为源文件的空白语义；可空字段的真 NULL 仍写显式 .NULL.
+    writeNullAsBlank: true,
   })
 }

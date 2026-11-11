@@ -78,4 +78,10 @@ export interface DbfWriteOptions {
   strict?: boolean
   /** Preserved verbatim after the field descriptor terminator. */
   trailingHeader?: Uint8Array
+  /**
+   * 非可空字段的 NULL 写为空白填充（保持描述符的非可空标记、不置 _NullFlags 位），
+   * 而不是抛错。用于"还原原始 DBF"路径：源文件中以空白表示未填写时，
+   * 导出保持与源文件一致的空白语义，而不是升级为显式 .NULL.。
+   */
+  writeNullAsBlank?: boolean
 }

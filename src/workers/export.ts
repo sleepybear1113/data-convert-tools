@@ -1,5 +1,11 @@
 import type { DatabaseEngine } from '../core/database/engine'
-import { inferDbfTargetSchema, toDbfFieldDescriptors } from '../core/conversion/dbf-target'
+import {
+  encodedLength,
+  inferDbfTargetSchema,
+  isEncodable,
+  toDbfFieldDescriptors,
+  truncateEncoded,
+} from '../core/conversion/dbf-target'
 import { inferTable } from '../core/conversion/infer-table'
 import { applyColumnMapping } from '../core/conversion/mapping'
 import { resolveColumnNames } from '../core/conversion/mapping'
@@ -383,7 +389,7 @@ async function exportDbf(
   const allDiagnostics = [...diagnostics, ...target.diagnostics]
   if (!target.canWrite) throw new ExportValidationError(allDiagnostics)
 
-  const fields = normalizeWriterNames(toDbfFieldDescriptors(target.columns), options.strict)
+  const fields = normalizeWriterNames(toDbfFieldDescriptors(target.columns), options.strict, encoding)
   const bytes = await new ArrayBufferDbfWriter().write(fields, {
     recordCount: rows.length,
     records: {
@@ -449,17 +455,25 @@ async function exportSqliteSelection(
   }
 }
 
-function normalizeWriterNames(fields: readonly DbfFieldDescriptor[], strict: boolean): DbfFieldDescriptor[] {
+function normalizeWriterNames(
+  fields: readonly DbfFieldDescriptor[],
+  strict: boolean,
+  encoding: string,
+): DbfFieldDescriptor[] {
   const used = new Set<string>()
   return fields.map((field, index) => {
     let name = field.name
-    if (!/^[\x20-\x7e]+$/.test(name) || name.length > 10) {
-      if (strict) throw new Error(`DBF field name must contain at most 10 printable ASCII bytes: ${name}`)
+    // 列名按目标编码的字节数校验（GBK 下允许中文名）；无法编码或超长时按原行为降级。
+    if (!name || !isEncodable(name, encoding) || encodedLength(name, encoding) > 10) {
+      if (strict) throw new Error(`DBF field name must contain at most 10 ${encoding} bytes: ${name}`)
       name = `COL${index + 1}`
     }
-    while (used.has(name.toLowerCase())) name = `${name}_2`
-    if (name.length > 10) {
-      if (strict) throw new Error(`DBF field name exceeds ten bytes: ${name}`)
+    while (used.has(name.toLowerCase())) {
+      const suffix = '_2'
+      name = `${truncateEncoded(name, 10 - encodedLength(suffix, encoding), encoding)}${suffix}`
+    }
+    if (encodedLength(name, encoding) > 10) {
+      if (strict) throw new Error(`DBF field name exceeds ten encoded bytes: ${name}`)
       name = `COL${index + 1}`
     }
     used.add(name.toLowerCase())

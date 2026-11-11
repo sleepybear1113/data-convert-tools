@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js'
 
 import type { CellValue } from '../model/value'
-import { writeAscii, writeNullTerminatedAscii } from './binary'
+import { writeAscii } from './binary'
 import {
   dateTimeToJulian,
   formatDbfDate,
@@ -11,6 +11,7 @@ import {
 } from './datetime'
 import {
   assertDbfEncoding,
+  decodeDbfText,
   DEFAULT_DBF_ENCODING,
   encodeDbfText,
   encodeDbfTextTruncated,
@@ -44,14 +45,18 @@ interface WriteLayout {
   nullBit?: number
 }
 
-function writerFieldName(field: DbfFieldDescriptor, strict: boolean): string {
+function writerFieldName(field: DbfFieldDescriptor, strict: boolean, encoding: string): string {
   const name = field.name
-  if (!name || name.includes('\0') || !/^[\x20-\x7e]+$/.test(name)) {
-    throw new Error(`DBF field name ${JSON.stringify(name)} must be printable ASCII`)
+  if (!name || name.includes('\0')) {
+    throw new Error(`DBF field name ${JSON.stringify(name)} must not be empty`)
   }
-  if (name.length > 10) {
-    if (strict) throw new Error(`DBF field name ${name} exceeds ten bytes`)
-    return name.slice(0, 10)
+  const encoded = encodeDbfText(name, encoding)
+  if (!isLosslessEncoding(name, encoded, encoding)) {
+    throw new Error(`DBF field name ${JSON.stringify(name)} cannot be represented as ${encoding}`)
+  }
+  if (encoded.length > 10) {
+    if (strict) throw new Error(`DBF field name ${name} exceeds ten encoded bytes`)
+    return decodeDbfText(encodeDbfTextTruncated(name, encoding, 10), encoding)
   }
   return name
 }
@@ -174,7 +179,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
 
     const names = new Set<string>()
     const outputNames = fields.map((field) => {
-      const name = writerFieldName(field, strict)
+      const name = writerFieldName(field, strict, encoding)
       const key = name.toLowerCase()
       if (names.has(key)) throw new Error(`Duplicate DBF field name ${name}`)
       names.add(key)
@@ -218,7 +223,10 @@ export class ArrayBufferDbfWriter implements DbfWriter {
         if (isNullFlags) continue
         const isNull = value === null || value === undefined
         if (isNull) {
-          if (strict && !field.nullable && field.type !== '0') {
+          // writeNullAsBlank：非可空字段的 NULL 写为空白填充（还原源文件的空白语义）；
+          // 非可空字段不占 _NullFlags 位，因此不会置位。可空字段的 NULL 仍写显式 .NULL.。
+          const writeAsBlank = options.writeNullAsBlank && !field.nullable && field.type !== '0'
+          if (!writeAsBlank && strict && !field.nullable && field.type !== '0') {
             throw new Error(`Record ${rowIndex}, field ${field.name} is NULL but is not nullable`)
           }
           continue
@@ -305,7 +313,9 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     for (let index = 0; index < fields.length; index += 1) {
       const descriptorOffset = 32 + index * 32
       const field = fields[index]
-      writeNullTerminatedAscii(result, descriptorOffset, 11, outputNames[index])
+      // 字段名按文件编码写出（GBK 时支持中文名），其余字节保持 null 填充。
+      const encodedName = encodeDbfText(outputNames[index] ?? '', encoding)
+      result.set(encodedName.subarray(0, 11), descriptorOffset)
       result[descriptorOffset + 11] = field.type.charCodeAt(0)
       view.setUint32(descriptorOffset + 12, layouts[index].offset, true)
       result[descriptorOffset + 16] = field.length
