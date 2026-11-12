@@ -164,9 +164,9 @@ describe('DBF writer strictness and GBK boundaries', () => {
     const writer = new ArrayBufferDbfWriter()
     const fields = [dbfField('C', 'C', 3)]
     await expect(writer.write(fields, recordSource([dbfRecord(['中文'])]), { strict: true }))
-      .rejects.toThrow(/needs 4 bytes/)
+      .rejects.toThrow(/需要 4 字节/)
     await expect(writer.write(fields, recordSource([dbfRecord(['😀'])]), { strict: true }))
-      .rejects.toThrow(/losslessly/)
+      .rejects.toThrow(/无损/)
 
     const bytes = await writer.write(fields, recordSource([dbfRecord(['中文'])]), { strict: false })
     const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
@@ -176,14 +176,14 @@ describe('DBF writer strictness and GBK boundaries', () => {
   it('rejects numeric truncation, precision loss and overflow in strict mode', async () => {
     const writer = new ArrayBufferDbfWriter()
     const cases: Array<[DbfFieldDescriptor, CellValue, RegExp]> = [
-      [dbfField('N', 'N', 5, 2), '1234.56', /width/],
-      [dbfField('N', 'N', 8, 2), '1.234', /decimal places/],
-      [dbfField('N', 'N', 20), 9_007_199_254_740_992, /unsafe/],
-      [dbfField('Y', 'Y', 8, 4), '1.00001', /four decimal/],
-      [dbfField('Y', 'Y', 8, 4), '1.0000000000000000000000001', /four decimal/],
+      [dbfField('N', 'N', 5, 2), '1234.56', /字段宽度/],
+      [dbfField('N', 'N', 8, 2), '1.234', /小数位/],
+      [dbfField('N', 'N', 20), 9_007_199_254_740_992, /精度不安全/],
+      [dbfField('Y', 'Y', 8, 4), '1.00001', /货币字段/],
+      [dbfField('Y', 'Y', 8, 4), '1.0000000000000000000000001', /货币字段/],
       [dbfField('Y', 'Y', 8, 4), '922337203685477.5808', /int64/],
       [dbfField('I', 'I', 4), '2147483648', /int32/],
-      [dbfField('B', 'B', 8), '1.234567890123456789', /precision/],
+      [dbfField('B', 'B', 8), '1.234567890123456789', /精度/],
     ]
     for (const [field, value, message] of cases) {
       await expect(writer.write([field], recordSource([dbfRecord([value])]), { strict: true }))
@@ -233,16 +233,16 @@ describe('DBF writer strictness and GBK boundaries', () => {
       [dbfField('C', 'C', 2)],
       recordSource([dbfRecord([null])]),
       { strict: true },
-    )).rejects.toThrow(/not nullable/)
+    )).rejects.toThrow(/不可空/)
     await expect(writer.write(
       [dbfField('D', 'D', 8)],
       recordSource([dbfRecord(['2023-02-29'])]),
       { strict: true },
-    )).rejects.toThrow(/Invalid DBF calendar date/)
+    )).rejects.toThrow(/无效的 DBF 日历日期/)
     const source = recordSource([dbfRecord([1])])
     source.recordCount = 2
     await expect(writer.write([dbfField('N', 'N', 2)], source, { strict: true }))
-      .rejects.toThrow(/declared 2 records/)
+      .rejects.toThrow(/声明 2 条记录/)
   })
 
   it('can write a hand-checked GBK descriptor without relying on reader field offsets', async () => {

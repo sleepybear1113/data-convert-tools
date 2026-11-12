@@ -23,7 +23,7 @@ export function languageDriverForEncoding(encoding: string): number | undefined 
 
 export function assertDbfEncoding(encoding: string): void {
   if (!iconv.encodingExists(encoding)) {
-    throw new Error(`Unsupported DBF character encoding: ${encoding}`)
+    throw new Error(`不支持的 DBF 字符编码：${encoding}`)
   }
 }
 

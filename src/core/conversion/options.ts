@@ -29,7 +29,7 @@ export function resolveInferenceOptions(
     dateFormats: options.dateFormats ?? DEFAULT_INFERENCE_OPTIONS.dateFormats,
   }
   if (!Number.isInteger(resolved.sampleSize) || resolved.sampleSize < 1) {
-    throw new RangeError('Inference sampleSize must be a positive integer')
+    throw new RangeError('类型推断的抽样行数必须为正整数')
   }
   if (resolved.mode !== 'sample' && resolved.mode !== 'full') {
     throw new RangeError(`Unsupported inference mode: ${String(resolved.mode)}`)

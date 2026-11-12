@@ -142,7 +142,7 @@ export function validateColumnMapping(
       diagnostics.push({
         code: 'MAPPING_SOURCE_INDEX',
         severity: 'error',
-        message: `Mapping source index is out of range: ${mapping.sourceIndex}`,
+        message: `映射的源列索引越界：${mapping.sourceIndex}`,
         location: { columnIndex: mapping.sourceIndex },
       })
       continue
@@ -151,7 +151,7 @@ export function validateColumnMapping(
       diagnostics.push({
         code: 'MAPPING_DUPLICATE_SOURCE',
         severity: 'error',
-        message: `Source column is mapped more than once: ${source.name}`,
+        message: `源列被映射了多次：${source.name}`,
         location: { columnIndex: mapping.sourceIndex, columnName: source.name },
       })
     }
@@ -171,7 +171,7 @@ export function validateColumnMapping(
       diagnostics.push({
         code: 'MAPPING_EMPTY_NAME',
         severity: 'error',
-        message: `Target column name is empty for source column ${source.name}`,
+        message: `源列 ${source.name} 的目标列名为空`,
         location: { columnIndex: mapping.sourceIndex, columnName: source.name },
       })
     } else if (seenNames.has(normalized)) {
@@ -184,7 +184,7 @@ export function validateColumnMapping(
       diagnostics.push({
         code: 'MAPPING_DUPLICATE_NAME',
         severity: 'error',
-        message: `Target column name is duplicated: ${mapping.targetName}`,
+        message: `目标列名重复：${mapping.targetName}`,
         location: { columnIndex: mapping.sourceIndex, columnName: source.name },
       })
     }
@@ -195,7 +195,7 @@ export function validateColumnMapping(
     diagnostics.push({
       code: 'MAPPING_NO_COLUMNS',
       severity: 'error',
-      message: 'At least one column must be selected',
+      message: '至少需要选择一列',
     })
   }
 

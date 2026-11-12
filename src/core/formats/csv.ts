@@ -86,26 +86,26 @@ function hasUtf8Bom(bytes: Uint8Array): boolean {
 
 function validateDelimiter(delimiter: string): void {
   if (!delimiter || /[\r\n"\ufeff]/u.test(delimiter)) {
-    throw new CsvFormatError('CSV_INVALID_DELIMITER', 'CSV delimiter must be non-empty and cannot contain quotes or newlines')
+    throw new CsvFormatError('CSV_INVALID_DELIMITER', 'CSV 分隔符不能为空，且不能包含引号或换行符')
   }
 }
 
 function validateQuoteChar(quoteChar: string): void {
   if ([...quoteChar].length !== 1 || /[\r\n]/u.test(quoteChar)) {
-    throw new CsvFormatError('CSV_INVALID_QUOTE', 'CSV quote character must be one character and cannot be a newline')
+    throw new CsvFormatError('CSV_INVALID_QUOTE', 'CSV 引用字符必须为单个字符，且不能是换行符')
   }
 }
 
 function validateSampleSize(sampleSize: number | undefined): void {
   if (sampleSize !== undefined && (!Number.isInteger(sampleSize) || sampleSize < 0)) {
-    throw new CsvFormatError('CSV_INVALID_SAMPLE_SIZE', 'CSV sampleSize must be a non-negative integer')
+    throw new CsvFormatError('CSV_INVALID_SAMPLE_SIZE', 'CSV 抽样行数必须为非负整数')
   }
 }
 
 /** Decode bytes without relying on Node's Buffer or browser TextDecoder GBK support. */
 export function decodeCsv(input: CsvInput, encoding = 'utf-8'): { text: string; bom: boolean } {
   if (!iconv.encodingExists(encoding)) {
-    throw new CsvFormatError('CSV_UNSUPPORTED_ENCODING', `Unsupported CSV encoding: ${encoding}`, { encoding })
+    throw new CsvFormatError('CSV_UNSUPPORTED_ENCODING', `不支持的 CSV 编码：${encoding}`, { encoding })
   }
 
   if (typeof input === 'string') {
@@ -192,7 +192,7 @@ export function readCsv(input: CsvInput, options: CsvReadOptions = {}): CsvReadR
     diagnostics.push({
       code: 'CSV_SAMPLE_LIMIT',
       severity: 'info',
-      message: `CSV preview is limited to ${limitedRows.length} of ${dataRows.length} data rows`,
+      message: `CSV 预览仅读取 ${dataRows.length} 行数据中的前 ${limitedRows.length} 行`,
       details: { sampledRows: limitedRows.length, totalRows: dataRows.length },
     })
   }
@@ -225,14 +225,14 @@ function csvValue(value: CellValue, rowIndex: number, columnIndex: number): stri
   if (typeof value === 'bigint') return value.toString()
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new CsvFormatError('CSV_NON_FINITE_NUMBER', 'CSV cannot contain NaN or Infinity', {
+      throw new CsvFormatError('CSV_NON_FINITE_NUMBER', 'CSV 不能包含 NaN 或 Infinity', {
         rowIndex,
         columnIndex,
       })
     }
     return value
   }
-  throw new CsvFormatError('CSV_UNSUPPORTED_VALUE', 'Binary values require an explicit text encoding before CSV export', {
+  throw new CsvFormatError('CSV_UNSUPPORTED_VALUE', '二进制值需要在导出 CSV 前显式指定文本编码', {
     rowIndex,
     columnIndex,
   })
@@ -241,7 +241,7 @@ function csvValue(value: CellValue, rowIndex: number, columnIndex: number): stri
 function assertEncodable(value: string, encoding: string, rowIndex?: number, columnIndex?: number): void {
   const encoded = iconv.encode(value, encoding)
   if (iconv.decode(encoded, encoding) !== value) {
-    throw new CsvFormatError('CSV_ENCODING_ERROR', `Value cannot be represented in ${encoding} without data loss`, {
+    throw new CsvFormatError('CSV_ENCODING_ERROR', `该值无法无损地以 ${encoding} 编码表示`, {
       encoding,
       rowIndex,
       columnIndex,
@@ -257,7 +257,7 @@ export function writeCsv(
 ): Uint8Array {
   const encoding = options.encoding ?? DEFAULT_CSV_WRITE_OPTIONS.encoding
   if (!iconv.encodingExists(encoding)) {
-    throw new CsvFormatError('CSV_UNSUPPORTED_ENCODING', `Unsupported CSV encoding: ${encoding}`, { encoding })
+    throw new CsvFormatError('CSV_UNSUPPORTED_ENCODING', `不支持的 CSV 编码：${encoding}`, { encoding })
   }
 
   const delimiter = options.delimiter ?? DEFAULT_CSV_WRITE_OPTIONS.delimiter
@@ -269,7 +269,7 @@ export function writeCsv(
   if (options.escapeChar !== undefined) validateQuoteChar(options.escapeChar)
 
   if (schema.columns.length === 0) {
-    throw new CsvFormatError('CSV_NO_COLUMNS', 'Cannot export a table with zero columns')
+    throw new CsvFormatError('CSV_NO_COLUMNS', '不能导出没有列的表')
   }
 
   const output: (string | number | boolean | null)[][] = []

@@ -37,7 +37,7 @@ export async function importTableIntoSqlite(
     }
 
     if (imported !== source.recordCount) {
-      throw new Error(`Import row count mismatch: expected ${source.recordCount}, received ${imported}`)
+      throw new Error(`导入行数不一致：预期 ${source.recordCount} 行，实际 ${imported} 行`)
     }
 
     if (options.includeMetadata !== false) {
@@ -151,7 +151,7 @@ function sqlLiteral(value: CellValue, column: ColumnSchema): string {
     case 'number': {
       if (!Number.isFinite(value)) throw new Error(`Non-finite number in column ${column.name}`)
       if (column.dataType === 'integer' && !Number.isSafeInteger(value)) {
-        throw new Error(`Unsafe integer in column ${column.name}; map it as exact text instead`)
+        throw new Error(`列 ${column.name} 存在不安全的整数；请将其映射为精确文本类型`)
       }
       return String(value)
     }
@@ -168,5 +168,5 @@ function sqlLiteral(value: CellValue, column: ColumnSchema): string {
       }
   }
 
-  throw new Error(`Unsupported value in column ${column.name}`)
+  throw new Error(`列 ${column.name} 包含不支持的值`)
 }

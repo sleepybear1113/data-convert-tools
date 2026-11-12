@@ -202,7 +202,7 @@ export function inferColumn(
       diagnostics.push({
         code: 'INFERENCE_UNSAFE_NUMBER',
         severity: 'warning',
-        message: 'An integer Number is outside JavaScript safe precision; use decimal text for lossless conversion',
+        message: '整数值超出 JavaScript 安全精度；建议以十进制文本导入以避免精度损失',
         location: { rowIndex },
       })
     }
@@ -238,7 +238,7 @@ export function inferColumn(
     diagnostics.push({
       code: 'INFERENCE_SAMPLE_LIMIT',
       severity: 'info',
-      message: `Type inference inspected ${sampledRows} of ${values.length} rows`,
+      message: `类型推断检查了 ${values.length} 行中的 ${sampledRows} 行`,
       details: { sampledRows, totalRows: values.length },
     })
   }
@@ -250,7 +250,7 @@ export function inferColumn(
     diagnostics.push({
       code: 'INFERENCE_LEADING_ZEROS',
       severity: 'info',
-      message: 'Leading-zero numeric text is preserved as TEXT',
+      message: '前导零数值文本将按 TEXT 保留',
       details: { rows: leadingZeroRows },
     })
   }
@@ -269,7 +269,7 @@ export function inferColumn(
       diagnostics.push({
         code: 'INFERENCE_NUMERIC_WIDENING',
         severity: 'info',
-        message: `Compatible numeric types were widened to ${numeric}`,
+        message: `兼容的数值类型已放宽为 ${numeric}`,
         details: { sourceTypes: observedTypes },
       })
     }
@@ -295,7 +295,7 @@ export function inferColumn(
   diagnostics.push({
     code: 'INFERENCE_MIXED_TYPES',
     severity: 'warning',
-    message: `Mixed incompatible types (${observedTypes.join(', ')}) fall back to TEXT`,
+    message: `)}) fall back to TEXT', ')}) fall back to TEXT`,
     details: { sourceTypes: observedTypes, typeCounts },
     location: { rowIndex: observations.find((observation) => observation.type !== observations[0].type)?.rowIndex },
   })

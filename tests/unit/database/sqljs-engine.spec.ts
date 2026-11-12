@@ -217,7 +217,7 @@ describe('SqlJsEngine', () => {
 
     expect(failure).toBeInstanceOf(SqlJsExecutionError)
     const error = failure as SqlJsExecutionError
-    expect(error.message).toContain('SQLite statement 3 failed')
+    expect(error.message).toContain('SQLite 语句 3 执行失败')
     expect(error.message).toContain('table_that_does_not_exist')
     expect(error.statementIndex).toBe(2)
     expect(error.result.statements).toHaveLength(2)

@@ -31,7 +31,7 @@ export function createSqliteHandlers(engine: DatabaseEngine): SqliteHandlers {
       `SELECT type FROM sqlite_master WHERE name = ${quoteSqliteString(name)}`,
     )
     const resultId = execution.statements.find((statement) => statement.resultId)?.resultId
-    if (!resultId) throw new Error(`Table not found: ${name}`)
+    if (!resultId) throw new Error(`找不到数据表：${name}`)
     try {
       const page = await database.getResultPage({ resultId, offset: 0, limit: 1 })
       const kind = page.rows[0]?.[0]
@@ -39,7 +39,7 @@ export function createSqliteHandlers(engine: DatabaseEngine): SqliteHandlers {
     } finally {
       await database.releaseResult(resultId)
     }
-    throw new Error(`Table not found: ${name}`)
+    throw new Error(`找不到数据表：${name}`)
   }
 
   return {
@@ -94,7 +94,7 @@ export function createSqliteHandlers(engine: DatabaseEngine): SqliteHandlers {
       const exists = schema.tables.some(
         (table) => table.name.toLowerCase() === target.toLowerCase(),
       )
-      if (exists) throw new Error(`Target table already exists: ${target}`)
+      if (exists) throw new Error(`目标表已存在：${target}`)
 
       await database.execute(
         `ALTER TABLE ${quoteSqliteIdentifier(tableName)} RENAME TO ${quoteSqliteIdentifier(target)}`,

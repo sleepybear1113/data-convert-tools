@@ -24,7 +24,7 @@ export function applyImportMapping<TSource extends MappableTableSource>(
     if (!Number.isInteger(column.sourceIndex)
       || column.sourceIndex < 0
       || column.sourceIndex >= source.schema.columns.length) {
-      throw new Error(`Invalid source column index: ${column.sourceIndex}`)
+      throw new Error(`无效的源列索引：${column.sourceIndex}`)
     }
     return column.sourceIndex
   })
@@ -36,9 +36,9 @@ export function applyImportMapping<TSource extends MappableTableSource>(
   const columns = included.map((column, index) => {
     const sourceColumn = source.schema.columns[column.sourceIndex]
     const name = column.targetName.trim()
-    if (!name) throw new Error(`Target column ${index + 1} has an empty name`)
+    if (!name) throw new Error(`第 ${index + 1} 列的目标列名为空`)
     const key = name.toLowerCase()
-    if (names.has(key)) throw new Error(`Duplicate target column name: ${name}`)
+    if (names.has(key)) throw new Error(`目标列名重复：${name}`)
     names.add(key)
 
     return {

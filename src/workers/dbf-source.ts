@@ -101,7 +101,7 @@ export async function openDbfSource(
       diagnostics.push({
         code: 'DBF_EXACT_DECIMAL_TEXT',
         severity: 'info',
-        message: `Field ${field.name} contains exact decimal text and will be imported as TEXT`,
+        message: `字段 ${field.name} 包含精确小数文本，将按 TEXT 导入`,
         location: { tableName, columnName: field.name, columnIndex: sourceIndex },
       })
     }

@@ -107,6 +107,6 @@ describe('CSV adapter - quotes, embedded lines, encodings and BOM', () => {
   it('returns parser diagnostics and rejects zero-column export', () => {
     const malformed = readCsv('a,b\n"unterminated,2')
     expect(malformed.diagnostics.length).toBeGreaterThan(0)
-    expect(() => writeCsv(schema([]), [])).toThrowError(/zero columns/u)
+    expect(() => writeCsv(schema([]), [])).toThrowError(/没有列/u)
   })
 })

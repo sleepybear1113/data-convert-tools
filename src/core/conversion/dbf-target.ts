@@ -232,10 +232,10 @@ function resolveNames(
     const duplicate = used.has(name.toLowerCase())
     used.add(name.toLowerCase())
     if (duplicate && !mayRename) {
-      diagnostic(diagnostics, 'error', 'DBF_DUPLICATE_COLUMN_NAME', `DBF column name is duplicated: ${name}`, column.sourceIndex, undefined, name)
+      diagnostic(diagnostics, 'error', 'DBF_DUPLICATE_COLUMN_NAME', `DBF 列名重复：${name}`, column.sourceIndex, undefined, name)
     }
     if (!mayRename && /[\u0000-\u001f\u007f]/u.test(name)) {
-      diagnostic(diagnostics, 'error', 'DBF_INVALID_COLUMN_NAME', `DBF column name contains control characters: ${name}`, column.sourceIndex, undefined, name)
+      diagnostic(diagnostics, 'error', 'DBF_INVALID_COLUMN_NAME', `DBF 列名包含控制字符：${name}`, column.sourceIndex, undefined, name)
     }
 
     if (name !== rawName) {
@@ -244,17 +244,17 @@ function resolveNames(
         mayRename ? 'warning' : 'error',
         mayRename ? 'DBF_COLUMN_RENAMED' : 'DBF_INVALID_COLUMN_NAME',
         mayRename
-          ? `DBF column ${rawName || '(empty)'} was deterministically renamed to ${name}`
-          : `DBF column name is empty, too long, duplicated, or contains control characters: ${rawName}`,
+          ? `DBF 列 ${rawName || '（空）'} 已自动重命名为 ${name}`
+          : `DBF 列名为空、过长、重复或包含控制字符：${rawName}`,
         column.sourceIndex,
         undefined,
         rawName,
       )
     }
     if (!name) {
-      diagnostic(diagnostics, 'error', 'DBF_EMPTY_COLUMN_NAME', 'DBF column name cannot be empty', column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_EMPTY_COLUMN_NAME', 'DBF 列名不能为空', column.sourceIndex)
     } else if (encodingValid && encodedLength(name, options.encoding) > 10) {
-      diagnostic(diagnostics, 'error', 'DBF_COLUMN_NAME_TOO_LONG', `DBF column name exceeds 10 encoded bytes: ${name}`, column.sourceIndex, undefined, name)
+      diagnostic(diagnostics, 'error', 'DBF_COLUMN_NAME_TOO_LONG', `DBF 列名超过 10 个编码字节：${name}`, column.sourceIndex, undefined, name)
     }
     return { ...column, name }
   })
@@ -271,18 +271,18 @@ function validateAndCoerceValue(
     diagnostic(diagnostics, severity, code, message, column.sourceIndex, rowIndex, column.name)
   }
   if (value === null) {
-    if (!column.nullable) location('error', 'DBF_UNEXPECTED_NULL', `Non-nullable DBF column ${column.name} contains NULL`)
+    if (!column.nullable) location('error', 'DBF_UNEXPECTED_NULL', `不可空的 DBF 列 ${column.name} 包含 NULL`)
     return
   }
 
   if (column.type === 'C') {
     const text = textValue(value)
     if (text === undefined) {
-      location('error', 'DBF_BINARY_AS_TEXT', `Binary value requires an explicit text encoding for column ${column.name}`)
+      location('error', 'DBF_BINARY_AS_TEXT', `列 ${column.name} 的二进制值需要显式指定文本编码`)
       return
     }
     if (!isEncodable(text, options.encoding)) {
-      location('error', 'DBF_ENCODING_ERROR', `Column ${column.name} contains text that cannot be encoded as ${options.encoding}`)
+      location('error', 'DBF_ENCODING_ERROR', `列 ${column.name} 包含无法以 ${options.encoding} 编码的文本`)
       return
     }
     if (encodedLength(text, options.encoding) > column.length) {
@@ -290,7 +290,7 @@ function validateAndCoerceValue(
       location(
         compatible ? 'warning' : 'error',
         compatible ? 'DBF_TRUNCATION_REQUIRED' : 'DBF_TEXT_OVERFLOW',
-        `Text exceeds ${column.length} encoded bytes in column ${column.name}${compatible ? '; explicit truncation is required' : ''}`,
+        `列 ${column.name} 的文本超过 ${column.length} 个编码字节${compatible ? '；需要显式截断' : ''}`,
       )
     }
     return
@@ -298,13 +298,13 @@ function validateAndCoerceValue(
 
   if (column.type === 'D') {
     if (typeof value !== 'string' || !isValidDateOnly(value, ['YYYY-MM-DD', 'YYYY/MM/DD'])) {
-      location('error', 'DBF_INVALID_DATE', `Column ${column.name} requires a valid YYYY-MM-DD or YYYY/MM/DD calendar date`)
+      location('error', 'DBF_INVALID_DATE', `列 ${column.name} 需要有效的 YYYY-MM-DD 或 YYYY/MM/DD 日期`)
     }
     return
   }
   if (column.type === 'T') {
     if (typeof value !== 'string' || !validDateTime(value)) {
-      location('error', 'DBF_INVALID_DATETIME', `Column ${column.name} requires a timezone-free YYYY-MM-DD HH:MM:SS[.SSS] value`)
+      location('error', 'DBF_INVALID_DATETIME', `列 ${column.name} 需要不含时区的 YYYY-MM-DD HH:MM:SS[.SSS] 日期时间`)
     }
     return
   }
@@ -312,45 +312,45 @@ function validateAndCoerceValue(
     const normalized = typeof value === 'string' ? value.trim().toLowerCase() : value
     const valid = typeof normalized === 'boolean' || normalized === 0 || normalized === 1 || normalized === 0n || normalized === 1n ||
       (typeof normalized === 'string' && ['true', 'yes', 'y', 'false', 'no', 'n'].includes(normalized))
-    if (!valid) location('error', 'DBF_INVALID_BOOLEAN', `Column ${column.name} contains an invalid logical value`)
+    if (!valid) location('error', 'DBF_INVALID_BOOLEAN', `列 ${column.name} 包含无效的逻辑值`)
     return
   }
 
   const decimal = decimalValue(value)
   if (!decimal) {
-    location('error', 'DBF_INVALID_NUMBER', `Column ${column.name} contains a non-numeric or non-finite value`)
+    location('error', 'DBF_INVALID_NUMBER', `列 ${column.name} 包含非数值或非有限值`)
     return
   }
   if (typeof value === 'number' && Number.isInteger(value) && !Number.isSafeInteger(value)) {
-    location('warning', 'DBF_UNSAFE_SOURCE_NUMBER', `Column ${column.name} contains a JavaScript integer whose precision may already be lost`)
+    location('warning', 'DBF_UNSAFE_SOURCE_NUMBER', `列 ${column.name} 包含可能已损失精度的 JavaScript 整数`)
   }
   if (column.type === 'I') {
     if (!decimal.isInteger() || !decimal.gte(-2147483648) || !decimal.lte(2147483647)) {
-      location('error', 'DBF_INTEGER_OVERFLOW', `Column ${column.name} requires a signed 32-bit integer`)
+      location('error', 'DBF_INTEGER_OVERFLOW', `列 ${column.name} 需要 32 位有符号整数`)
     }
     return
   }
   if (column.type === 'B') {
     const double = Number(decimal.toString())
     if (!Number.isFinite(double)) {
-      location('error', 'DBF_DOUBLE_OVERFLOW', `Column ${column.name} is outside the finite Double range`)
+      location('error', 'DBF_DOUBLE_OVERFLOW', `列 ${column.name} 超出有限的 Double 范围`)
     } else if (!new Decimal(double.toString()).eq(decimal)) {
       const compatible = !options.strict && options.allowTruncate
       location(
         compatible ? 'warning' : 'error',
         compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DOUBLE_PRECISION',
-        `Converting column ${column.name} to Double would lose decimal precision`,
+        `列 ${column.name} 转换为 Double 会丢失小数精度`,
       )
     }
     return
   }
   if (column.type === 'Y') {
     if (!decimal.gte(MIN_SAFE_CURRENCY) || !decimal.lte(MAX_SAFE_CURRENCY)) {
-      location('error', 'DBF_CURRENCY_OVERFLOW', `Column ${column.name} is outside the signed 64-bit currency range`)
+      location('error', 'DBF_CURRENCY_OVERFLOW', `列 ${column.name} 超出 64 位有符号货币范围`)
     }
     if (!decimal.toDecimalPlaces(4).eq(decimal)) {
       const compatible = !options.strict && options.allowTruncate
-      location(compatible ? 'warning' : 'error', compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DECIMAL_OVERFLOW', `Currency value in column ${column.name} has more than four significant decimal places`)
+      location(compatible ? 'warning' : 'error', compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DECIMAL_OVERFLOW', `列 ${column.name} 的货币值超过 4 位有效小数`)
     }
     return
   }
@@ -358,7 +358,7 @@ function validateAndCoerceValue(
 
   if (!decimal.toDecimalPlaces(column.decimalPlaces).eq(decimal)) {
     const compatible = !options.strict && options.allowTruncate
-    location(compatible ? 'warning' : 'error', compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DECIMAL_OVERFLOW', `Numeric value in column ${column.name} exceeds ${column.decimalPlaces} decimal places`)
+    location(compatible ? 'warning' : 'error', compatible ? 'DBF_ROUNDING_REQUIRED' : 'DBF_DECIMAL_OVERFLOW', `列 ${column.name} 的数值超过 ${column.decimalPlaces} 位小数`)
   }
   // 按舍入后数值的实际小数位数计算所需宽度：整数（如 110 写入 N(4,1)）不需要
   // 小数点与小数位，不应被元数据里的 decimalPlaces 误判为溢出。
@@ -367,7 +367,7 @@ function validateAndCoerceValue(
   const requiredLength = integerDigits(rounded) + (rounded.s < 0 ? 1 : 0) +
     (fractionDigits > 0 ? fractionDigits + 1 : 0)
   if (requiredLength > column.length) {
-    location('error', 'DBF_NUMERIC_OVERFLOW', `Numeric value requires ${requiredLength} characters but column ${column.name} has length ${column.length}`)
+    location('error', 'DBF_NUMERIC_OVERFLOW', `列 ${column.name} 的数值需要 ${requiredLength} 个字符，字段宽度为 ${column.length}`)
   }
 }
 
@@ -382,7 +382,7 @@ export function inferDbfTargetSchema(
   const diagnostics: Diagnostic[] = []
   const encodingValid = iconv.encodingExists(resolved.encoding)
   if (!encodingValid) {
-    diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_ENCODING', `Unsupported DBF encoding: ${resolved.encoding}`)
+    diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_ENCODING', `不支持的 DBF 编码：${resolved.encoding}`)
   }
 
   const mappings = suppliedMappings ?? sourceSchema.columns.map((column, sourceIndex): ColumnMapping => ({
@@ -409,14 +409,14 @@ export function inferDbfTargetSchema(
     if (requestedType) {
       type = (SUPPORTED_TYPES.has(requestedType) ? requestedType : 'unknown') as DbfFieldType
       if (!SUPPORTED_TYPES.has(requestedType)) {
-        diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_TYPE', `Unsupported requested DBF type ${requestedType} for column ${mapping.targetName}`, mapping.sourceIndex)
+        diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_TYPE', `列 ${mapping.targetName} 请求的 DBF 类型 ${requestedType} 不受支持`, mapping.sourceIndex)
       }
     } else if (sourceType && SUPPORTED_TYPES.has(sourceType)) {
       type = sourceType as DbfFieldType
     } else {
       type = inferredType(mapping.targetType ?? source.dataType, values)
       if (type === 'unknown') {
-        diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_TYPE', `Binary/unknown column ${mapping.targetName} needs an explicit supported DBF type`, mapping.sourceIndex)
+        diagnostic(diagnostics, 'error', 'DBF_UNSUPPORTED_TYPE', `二进制/未知列 ${mapping.targetName} 需要显式指定支持的 DBF 类型`, mapping.sourceIndex)
       }
     }
 
@@ -434,15 +434,15 @@ export function inferDbfTargetSchema(
       if (encodingValid && !resolved.strict && resolved.allowTypeWidening) {
         const requiredLength = inferredTextLength(values, resolved.encoding)
         if (requiredLength > length && requiredLength <= 254) {
-          diagnostic(diagnostics, 'warning', 'DBF_FIELD_WIDENED', `Character field ${mapping.targetName} was widened to ${requiredLength} bytes`, mapping.sourceIndex)
+          diagnostic(diagnostics, 'warning', 'DBF_FIELD_WIDENED', `字符字段 ${mapping.targetName} 已放宽为 ${requiredLength} 字节`, mapping.sourceIndex)
           length = requiredLength
         } else if (requiredLength > 254 && resolved.allowTruncate) {
-          diagnostic(diagnostics, 'warning', 'DBF_FIELD_LENGTH_REDUCED', `Character field ${mapping.targetName} was limited to 254 bytes`, mapping.sourceIndex)
+          diagnostic(diagnostics, 'warning', 'DBF_FIELD_LENGTH_REDUCED', `字符字段 ${mapping.targetName} 已限制为 254 字节`, mapping.sourceIndex)
           length = 254
         }
       }
       if (length > 254 && !resolved.strict && resolved.allowTruncate) {
-        diagnostic(diagnostics, 'warning', 'DBF_FIELD_LENGTH_REDUCED', `Character field ${mapping.targetName} was limited to 254 bytes`, mapping.sourceIndex)
+        diagnostic(diagnostics, 'warning', 'DBF_FIELD_LENGTH_REDUCED', `字符字段 ${mapping.targetName} 已限制为 254 字节`, mapping.sourceIndex)
         length = 254
       }
     }
@@ -451,12 +451,12 @@ export function inferDbfTargetSchema(
       const requiredLength = requiredNumericLength(values, decimalPlaces)
       if (length > 20 || requiredLength > 20) {
         const widenedLength = inferredTextLength(values, resolved.encoding)
-        diagnostic(diagnostics, 'warning', 'DBF_TYPE_WIDENED', `Numeric field ${mapping.targetName} was widened to C to preserve precision`, mapping.sourceIndex)
+        diagnostic(diagnostics, 'warning', 'DBF_TYPE_WIDENED', `数值字段 ${mapping.targetName} 已放宽为 C 类型以保留精度`, mapping.sourceIndex)
         type = 'C'
         length = Math.min(254, widenedLength)
         decimalPlaces = 0
       } else if (requiredLength > length) {
-        diagnostic(diagnostics, 'warning', 'DBF_FIELD_WIDENED', `Numeric field ${mapping.targetName} was widened to ${requiredLength} characters`, mapping.sourceIndex)
+        diagnostic(diagnostics, 'warning', 'DBF_FIELD_WIDENED', `数值字段 ${mapping.targetName} 已放宽为 ${requiredLength} 字符`, mapping.sourceIndex)
         length = requiredLength
       }
     }
@@ -482,22 +482,22 @@ export function inferDbfTargetSchema(
 
     if (!SUPPORTED_TYPES.has(column.type)) continue
     if (!Number.isInteger(column.length) || column.length < 1) {
-      diagnostic(diagnostics, 'error', 'DBF_INVALID_LENGTH', `DBF field ${column.name} has an invalid length`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_INVALID_LENGTH', `DBF 字段 ${column.name} 的长度无效`, column.sourceIndex)
     } else if (column.type === 'C' && column.length > 254) {
-      diagnostic(diagnostics, 'error', 'DBF_INVALID_LENGTH', `Character field ${column.name} exceeds the 254-byte VFP limit`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_INVALID_LENGTH', `字符字段 ${column.name} 超过 VFP 的 254 字节限制`, column.sourceIndex)
     } else if ((column.type === 'N' || column.type === 'F') && column.length > 20) {
-      diagnostic(diagnostics, 'error', 'DBF_NUMERIC_FIELD_TOO_WIDE', `Numeric field ${column.name} exceeds the 20-character VFP limit`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_NUMERIC_FIELD_TOO_WIDE', `数值字段 ${column.name} 超过 VFP 的 20 字符限制`, column.sourceIndex)
     }
     if (fixed && (column.length !== fixed.length || column.decimalPlaces !== fixed.decimalPlaces)) {
-      diagnostic(diagnostics, 'error', 'DBF_INVALID_FIXED_FIELD', `${column.type} field ${column.name} must use length ${fixed.length} and ${fixed.decimalPlaces} decimal places`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_INVALID_FIXED_FIELD', `${column.type} 类型字段 ${column.name} 必须使用长度 ${fixed.length} 和 ${fixed.decimalPlaces} 位小数`, column.sourceIndex)
     }
     if (!Number.isInteger(column.decimalPlaces) || column.decimalPlaces < 0 ||
       ((column.type === 'N' || column.type === 'F') && (column.decimalPlaces > 19 || column.decimalPlaces >= column.length)) ||
       (column.type !== 'N' && column.type !== 'F' && column.type !== 'Y' && column.decimalPlaces !== 0)) {
-      diagnostic(diagnostics, 'error', 'DBF_INVALID_DECIMALS', `DBF field ${column.name} has invalid decimal places`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_INVALID_DECIMALS', `DBF 字段 ${column.name} 的小数位无效`, column.sourceIndex)
     }
     if (encodingValid && !isEncodable(column.name, resolved.encoding)) {
-      diagnostic(diagnostics, 'error', 'DBF_ENCODING_ERROR', `Column name ${column.name} cannot be encoded as ${resolved.encoding}`, column.sourceIndex)
+      diagnostic(diagnostics, 'error', 'DBF_ENCODING_ERROR', `列名 ${column.name} 无法以 ${resolved.encoding} 编码`, column.sourceIndex)
     }
 
     // Invalid field dimensions are reported above; skip expensive numeric formatting.

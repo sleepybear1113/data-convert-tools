@@ -51,7 +51,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_UNSUPPORTED_FIELD_TYPE',
         severity: 'error',
-        message: `Unsupported DBF field type ${result.type} for ${result.name}`,
+        message: `字段 ${result.name} 的 DBF 类型 ${result.type} 不受支持`,
         location,
       })
     }
@@ -59,7 +59,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_INVALID_FIELD_LENGTH',
         severity: 'error',
-        message: `Invalid byte length for DBF field ${result.name}`,
+        message: `字段 ${result.name} 的字节长度无效`,
         location,
       })
     }
@@ -68,7 +68,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_INVALID_FIELD_LENGTH',
         severity: 'error',
-        message: `${result.type} field ${result.name} must be ${fixedLength} bytes`,
+        message: `${result.type} 类型字段 ${result.name} 必须为 ${fixedLength} 字节`,
         location,
       })
     }
@@ -76,7 +76,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_INVALID_FIELD_LENGTH',
         severity: 'error',
-        message: `${result.type} field ${result.name} must have a non-zero byte width`,
+        message: `${result.type} 类型字段 ${result.name} 的宽度不能为 0`,
         location,
       })
     }
@@ -84,7 +84,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_INVALID_DECIMAL_PLACES',
         severity: 'error',
-        message: `Invalid decimal places for DBF field ${result.name}`,
+        message: `字段 ${result.name} 的小数位无效`,
         location,
       })
     }
@@ -92,7 +92,7 @@ export function validateDbfFields(fields: readonly DbfFieldDescriptor[]): DbfVal
       diagnostics.push({
         code: 'DBF_INVALID_FIELD_FLAGS',
         severity: 'error',
-        message: `Invalid flags for DBF field ${result.name}`,
+        message: `字段 ${result.name} 的标志位无效`,
         location,
       })
     }

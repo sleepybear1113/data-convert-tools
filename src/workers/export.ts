@@ -54,7 +54,7 @@ export async function exportWorkspace(
 ): Promise<ExportFileResult> {
   if (options.selection.kind === 'workspace') {
     if (options.format !== 'sqlite') {
-      throw new Error('The whole workspace can only be exported as SQLite')
+      throw new Error('整个工作区只能导出为 SQLite 格式')
     }
     return {
       fileName: withExtension(options.fileName, 'sqlite'),
@@ -319,7 +319,7 @@ function prepareSchema(
   const collisions: Diagnostic[] = names.collisions.map((collision) => ({
     code: 'EXPORT_COLUMN_RENAMED',
     severity: 'warning',
-    message: `Column ${collision.sourceName || '(empty)'} was renamed to ${collision.resolvedName}`,
+    message: `列 ${collision.sourceName || '（空）'} 已重命名为 ${collision.resolvedName}`,
     location: { columnIndex: collision.sourceIndex },
   }))
   return {
@@ -465,7 +465,7 @@ function normalizeWriterNames(
     let name = field.name
     // 列名按目标编码的字节数校验（GBK 下允许中文名）；无法编码或超长时按原行为降级。
     if (!name || !isEncodable(name, encoding) || encodedLength(name, encoding) > 10) {
-      if (strict) throw new Error(`DBF field name must contain at most 10 ${encoding} bytes: ${name}`)
+      if (strict) throw new Error(`DBF 字段名最多 10 个 ${encoding} 字节：${name}`)
       name = `COL${index + 1}`
     }
     while (used.has(name.toLowerCase())) {
@@ -473,7 +473,7 @@ function normalizeWriterNames(
       name = `${truncateEncoded(name, 10 - encodedLength(suffix, encoding), encoding)}${suffix}`
     }
     if (encodedLength(name, encoding) > 10) {
-      if (strict) throw new Error(`DBF field name exceeds ten encoded bytes: ${name}`)
+      if (strict) throw new Error(`DBF 字段名超过 10 个编码字节：${name}`)
       name = `COL${index + 1}`
     }
     used.add(name.toLowerCase())

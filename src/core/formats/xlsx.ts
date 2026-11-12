@@ -92,11 +92,11 @@ export function writeXlsxWorkbook(workbook: WorkBook, options: Pick<XlsxWriteOpt
 function selectedSheet(workbook: WorkBook, sheetName?: string): { name: string; sheet: WorkSheet } {
   const name = sheetName ?? workbook.SheetNames[0]
   if (!name) {
-    throw new XlsxFormatError('XLSX_NO_SHEETS', 'The workbook does not contain any worksheets')
+    throw new XlsxFormatError('XLSX_NO_SHEETS', '工作簿不包含任何工作表')
   }
   const sheet = workbook.Sheets[name]
   if (!sheet) {
-    throw new XlsxFormatError('XLSX_SHEET_NOT_FOUND', `Worksheet not found: ${name}`, {
+    throw new XlsxFormatError('XLSX_SHEET_NOT_FOUND', `找不到工作表：${name}`, {
       sheetName: name,
       availableSheets: [...workbook.SheetNames],
     })
@@ -156,7 +156,7 @@ function sourceColumnIndexes(
   return selection.map((selected) => {
     if (typeof selected === 'number') {
       if (!Number.isInteger(selected) || selected < 0 || selected >= columns.length) {
-        throw new XlsxFormatError('XLSX_COLUMN_NOT_FOUND', `Worksheet column index is out of range: ${selected}`, {
+        throw new XlsxFormatError('XLSX_COLUMN_NOT_FOUND', `工作表列索引越界：${selected}`, {
           columnIndex: selected,
         })
       }
@@ -164,7 +164,7 @@ function sourceColumnIndexes(
     }
     const index = columns.findIndex((column) => column.name === selected)
     if (index < 0) {
-      throw new XlsxFormatError('XLSX_COLUMN_NOT_FOUND', `Worksheet column not found: ${selected}`, {
+      throw new XlsxFormatError('XLSX_COLUMN_NOT_FOUND', `找不到工作表列：${selected}`, {
         columnName: selected,
       })
     }
@@ -176,7 +176,7 @@ function sourceColumnIndexes(
 export function readXlsxTable(workbook: WorkBook, options: XlsxReadOptions = {}): XlsxTableResult {
   const headerRow = options.headerRow ?? 1
   if (!Number.isInteger(headerRow) || headerRow < 1) {
-    throw new XlsxFormatError('XLSX_INVALID_HEADER_ROW', 'XLSX headerRow must be a positive one-based integer')
+    throw new XlsxFormatError('XLSX_INVALID_HEADER_ROW', 'XLSX 表头行号必须为从 1 开始的正整数')
   }
 
   const { name: sheetName, sheet } = selectedSheet(workbook, options.sheetName)
@@ -227,14 +227,14 @@ export function readXlsxTable(workbook: WorkBook, options: XlsxReadOptions = {})
     diagnostics.push({
       code: 'XLSX_EMPTY_SHEET',
       severity: 'info',
-      message: `Worksheet ${sheetName} is empty`,
+      message: `工作表 ${sheetName} 为空`,
       location: { tableName: sheetName },
     })
   } else if (hasHeader && firstRow > lastRow) {
     diagnostics.push({
       code: 'XLSX_HEADER_OUTSIDE_RANGE',
       severity: 'warning',
-      message: `Header row ${headerRow} is outside the used range of worksheet ${sheetName}`,
+      message: `表头行 ${headerRow} 超出工作表 ${sheetName} 的已用范围`,
       location: { tableName: sheetName, rowIndex: firstRow },
     })
   }
@@ -265,7 +265,7 @@ export function readXlsx(input: ArrayBuffer | Uint8Array, options: XlsxReadOptio
 
 function validateSheetName(sheetName: string): void {
   if (!sheetName || sheetName.length > 31 || /[\\/*?:[\]]/u.test(sheetName)) {
-    throw new XlsxFormatError('XLSX_INVALID_SHEET_NAME', `Invalid Excel worksheet name: ${sheetName}`, { sheetName })
+    throw new XlsxFormatError('XLSX_INVALID_SHEET_NAME', `无效的 Excel 工作表名称：${sheetName}`, { sheetName })
   }
 }
 
@@ -274,14 +274,14 @@ function outputValue(value: CellValue, rowIndex: number, columnIndex: number): s
   if (typeof value === 'bigint') return value.toString()
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new XlsxFormatError('XLSX_NON_FINITE_NUMBER', 'XLSX cannot contain NaN or Infinity as numbers', {
+      throw new XlsxFormatError('XLSX_NON_FINITE_NUMBER', 'XLSX 的数值不能是 NaN 或 Infinity', {
         rowIndex,
         columnIndex,
       })
     }
     return value
   }
-  throw new XlsxFormatError('XLSX_UNSUPPORTED_VALUE', 'Binary values require an explicit text encoding before XLSX export', {
+  throw new XlsxFormatError('XLSX_UNSUPPORTED_VALUE', '二进制值需要在导出 XLSX 前显式指定文本编码', {
     rowIndex,
     columnIndex,
   })
@@ -296,7 +296,7 @@ export function createXlsxWorkbook(
   const sheetName = options.sheetName ?? schema.name ?? 'Sheet1'
   validateSheetName(sheetName)
   if (schema.columns.length === 0) {
-    throw new XlsxFormatError('XLSX_NO_COLUMNS', 'Cannot export a table with zero columns')
+    throw new XlsxFormatError('XLSX_NO_COLUMNS', '不能导出没有列的表')
   }
 
   const output: (string | number | boolean | null)[][] = []

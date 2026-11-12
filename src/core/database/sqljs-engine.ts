@@ -143,7 +143,7 @@ export class SqlJsEngine implements DatabaseEngine {
       }
     } catch (cause) {
       const reason = errorMessage(cause)
-      const message = `SQLite statement ${statementIndex + 1} failed: ${reason}`
+      const message = `SQLite 语句 ${statementIndex + 1} 执行失败：${reason}`
       const diagnostic: Diagnostic = {
         code: 'SQLITE_STATEMENT_ERROR',
         severity: 'error',

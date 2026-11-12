@@ -67,13 +67,13 @@ function decodeField(
       const textBytes = trimPaddedCharacterBytes(raw)
       const result = decodeDbfCharacterField(textBytes, encoding)
       if (result.invalid) {
-        throw new Error(`Field ${field.name} contains invalid ${encoding} byte sequences`)
+        throw new Error(`字段 ${field.name} 包含无效的 ${encoding} 字节序列`)
       }
       if (result.tailTruncated) {
         diagnostics.push({
           code: 'DBF_TRUNCATED_CHARACTER',
           severity: 'warning',
-          message: `Field ${field.name} ends with an incomplete ${encoding} character (text was cut at the field boundary); the partial character was dropped`,
+          message: `字段 ${field.name} 在字段边界被截断，最后一个多字节字符不完整，已丢弃残缺部分`,
           location: { rowIndex, columnIndex, columnName: field.name },
         })
       }
@@ -96,7 +96,7 @@ function decodeField(
       if (['T', 'Y'].includes(value)) return true
       if (['F', 'N'].includes(value)) return false
       if (['?', ' ', '\0'].includes(value)) return null
-      throw new Error(`Field ${field.name} has invalid logical byte 0x${raw[0].toString(16)}`)
+      throw new Error(`字段 ${field.name} 的逻辑值字节无效（0x${raw[0].toString(16)}）`)
     }
     case 'D': {
       const date = parseDbfDate(ascii(raw))
@@ -122,12 +122,12 @@ export class ArrayBufferDbfReader implements DbfReader {
   async read(input: ArrayBuffer, options: DbfReadOptions = {}): Promise<DbfReadResult> {
     const bytes = new Uint8Array(input)
     if (bytes.length < 32) {
-      throw new Error('DBF input is shorter than its 32-byte file header')
+      throw new Error('DBF 文件长度不足 32 字节的文件头')
     }
     const view = new DataView(input)
     const fileVersion = view.getUint8(0)
     if (fileVersion !== 0x30) {
-      throw new Error(`Unsupported DBF version 0x${fileVersion.toString(16)}; expected VFP 0x30`)
+      throw new Error(`不支持的 DBF 版本 0x${fileVersion.toString(16)}；仅支持 VFP 0x30`)
     }
     const recordCount = view.getUint32(4, true)
     const headerLength = view.getUint16(8, true)
@@ -141,7 +141,7 @@ export class ArrayBufferDbfReader implements DbfReader {
     const diagnostics: Diagnostic[] = []
 
     if (headerLength < 33 || headerLength > bytes.length) {
-      throw new Error(`Invalid DBF header length ${headerLength}`)
+      throw new Error(`DBF 头长度无效：${headerLength}`)
     }
 
     const fields: DbfFieldDescriptor[] = []
@@ -153,7 +153,7 @@ export class ArrayBufferDbfReader implements DbfReader {
         break
       }
       if (descriptorOffset + 32 > headerLength) {
-        throw new Error('DBF field descriptor crosses the header boundary')
+        throw new Error('DBF 字段描述符超出头部边界')
       }
       const rawType = String.fromCharCode(bytes[descriptorOffset + 11])
       const type = (FIELD_TYPES.has(rawType) ? rawType : 'unknown') as DbfFieldType
@@ -169,20 +169,20 @@ export class ArrayBufferDbfReader implements DbfReader {
         system: (flags & 0x01) !== 0,
       }
       if (!field.name) {
-        throw new Error(`DBF field ${fields.length} has an empty name`)
+        throw new Error(`DBF 第 ${fields.length + 1} 个字段名为空`)
       }
       const fixedLength = expectedFixedFieldLength(type)
       if (fixedLength !== undefined && field.length !== fixedLength) {
-        throw new Error(`${type} field ${field.name} must have length ${fixedLength}, got ${field.length}`)
+        throw new Error(`${type} 类型字段 ${field.name} 的长度必须为 ${fixedLength}，实际为 ${field.length}`)
       }
       if (['C', 'N', 'F'].includes(type) && field.length === 0) {
-        throw new Error(`${type} field ${field.name} has zero length`)
+        throw new Error(`${type} 类型字段 ${field.name} 的长度为 0`)
       }
       if (!SUPPORTED_VALUE_TYPES.has(type)) {
         const diagnostic: Diagnostic = {
           code: 'DBF_UNSUPPORTED_FIELD_TYPE',
           severity: strict ? 'error' : 'warning',
-          message: `Unsupported DBF field type ${rawType} for ${field.name}; returning raw bytes`,
+          message: `字段 ${field.name} 的 DBF 类型 ${rawType} 不受支持；将按原始字节返回`,
           location: { columnIndex: fields.length, columnName: field.name },
         }
         if (strict) throw new Error(diagnostic.message)
@@ -192,7 +192,7 @@ export class ArrayBufferDbfReader implements DbfReader {
       descriptorOffset += 32
     }
     if (terminatorOffset < 0) {
-      throw new Error('DBF header has no 0x0d field descriptor terminator')
+      throw new Error('DBF 头部缺少 0x0d 字段描述符终止符')
     }
 
     const layouts: FieldLayout[] = []
@@ -202,14 +202,14 @@ export class ArrayBufferDbfReader implements DbfReader {
       fieldOffset += field.length
     }
     if (recordLength < fieldOffset) {
-      throw new Error(`DBF record length ${recordLength} is smaller than field data length ${fieldOffset}`)
+      throw new Error(`DBF 记录长度 ${recordLength} 小于字段数据长度 ${fieldOffset}`)
     }
 
     const nullFlagIndexes = fields
       .map((field, index) => ({ field, index }))
       .filter(({ field }) => field.type === '0' && field.name.toLowerCase() === '_nullflags')
     if (nullFlagIndexes.length > 1) {
-      throw new Error('DBF header contains more than one _NullFlags field')
+      throw new Error('DBF 头部包含多个 _NullFlags 系统字段')
     }
     const nullFlagIndex = nullFlagIndexes[0]?.index
     let nullBit = 0
@@ -224,7 +224,7 @@ export class ArrayBufferDbfReader implements DbfReader {
       diagnostics.push({
         code: 'DBF_NULL_FLAGS_MISSING',
         severity: 'warning',
-        message: 'Nullable DBF fields have no _NullFlags system field; NULL bits cannot be recovered',
+        message: '存在可空字段但没有 _NullFlags 系统字段，无法恢复 NULL 标记',
       })
     } else if (nullFlagIndex !== undefined && fields[nullFlagIndex].length < nullFlagLength) {
       const message = `_NullFlags is ${fields[nullFlagIndex].length} bytes; ${nullFlagLength} are required`
@@ -236,7 +236,7 @@ export class ArrayBufferDbfReader implements DbfReader {
     let recordsToRead = recordCount
     if (expectedEnd > bytes.length) {
       if (strict) {
-        throw new Error(`DBF is truncated: header declares ${recordCount} records of ${recordLength} bytes`)
+        throw new Error(`DBF 文件不完整：头部声明 ${recordCount} 条记录（每条 ${recordLength} 字节）`)
       }
       let availableEnd = bytes.length
       if (availableEnd > headerLength && bytes[availableEnd - 1] === 0x1a) {
@@ -246,15 +246,15 @@ export class ArrayBufferDbfReader implements DbfReader {
       diagnostics.push({
         code: 'DBF_TRUNCATED_RECORDS',
         severity: 'warning',
-        message: `DBF declares ${recordCount} records but only ${recordsToRead} complete records are present`,
+        message: `DBF 声明 ${recordCount} 条记录，实际只有 ${recordsToRead} 条完整记录`,
       })
     } else if (expectedEnd < bytes.length) {
       if (bytes[expectedEnd] !== 0x1a) {
-        const message = `Unexpected data follows the ${recordCount} declared DBF records`
+        const message = `DBF 声明的 ${recordCount} 条记录之后存在多余数据`
         if (strict) throw new Error(message)
         diagnostics.push({ code: 'DBF_TRAILING_DATA', severity: 'warning', message })
       } else if (expectedEnd + 1 < bytes.length) {
-        const message = 'Bytes follow the DBF 0x1a file terminator'
+        const message = 'DBF 文件结束符 0x1a 之后存在多余字节'
         if (strict) throw new Error(message)
         diagnostics.push({ code: 'DBF_DATA_AFTER_TERMINATOR', severity: 'warning', message })
       }
@@ -287,7 +287,7 @@ export class ArrayBufferDbfReader implements DbfReader {
       diagnostics.push({
         code: 'DBF_EMPTY_VALUES_NULLABLE',
         severity: 'info',
-        message: `Fields with empty values were treated as nullable: ${upgraded.join(', ')}`,
+        message: `以下字段存在空白内容，已按可空处理：${upgraded.join('、')}`,
       })
     }
 
@@ -307,7 +307,7 @@ export class ArrayBufferDbfReader implements DbfReader {
         const deletionFlag = bytes[recordOffset]
         let deleted = deletionFlag === 0x2a
         if (deletionFlag !== 0x20 && deletionFlag !== 0x2a) {
-          const message = `Record ${rowIndex} has invalid deletion flag 0x${deletionFlag.toString(16)}`
+          const message = `记录 ${rowIndex} 的删除标志无效：0x${deletionFlag.toString(16)}`
           if (strict) throw new Error(message)
           diagnostics.push({
             code: 'DBF_INVALID_DELETION_FLAG',
@@ -340,7 +340,7 @@ export class ArrayBufferDbfReader implements DbfReader {
           try {
             values.push(decodeField(view, bytes, recordOffset, layout, encoding, rowIndex, columnIndex, diagnostics))
           } catch (error) {
-            const message = `Record ${rowIndex}, field ${layout.field.name}: ${messageFor(error)}`
+            const message = `记录 ${rowIndex}，字段 ${layout.field.name}：${messageFor(error)}`
             if (strict) throw new Error(message)
             diagnostics.push({
               code: 'DBF_INVALID_FIELD_VALUE',

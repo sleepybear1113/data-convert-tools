@@ -196,7 +196,7 @@ describe('ArrayBufferDbfReader independent binary decoding', () => {
 
     // 记录解码在生成器被消费时才执行：必须在遍历记录时断言 strict 抛错
     const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
-    await expect(collectRecords(read.records)).rejects.toThrow(/invalid gbk byte sequences/)
+    await expect(collectRecords(read.records)).rejects.toThrow(/无效的 gbk 字节序列/)
   })
 
   it('treats blank numeric fields as NULL and upgrades the column to nullable', async () => {
@@ -276,7 +276,7 @@ describe('ArrayBufferDbfReader independent binary decoding', () => {
     const { bytes } = rawDbf([dbfField('I', 'I', 4)], 2, new Uint8Array())
     const truncated = bytes.slice(0, bytes.length - 6)
     await expect(new ArrayBufferDbfReader().read(exactArrayBuffer(truncated), { strict: true }))
-      .rejects.toThrow(/truncated/)
+      .rejects.toThrow(/不完整/)
   })
 })
 

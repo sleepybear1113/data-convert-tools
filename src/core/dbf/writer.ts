@@ -48,14 +48,14 @@ interface WriteLayout {
 function writerFieldName(field: DbfFieldDescriptor, strict: boolean, encoding: string): string {
   const name = field.name
   if (!name || name.includes('\0')) {
-    throw new Error(`DBF field name ${JSON.stringify(name)} must not be empty`)
+    throw new Error(`DBF 字段名 ${JSON.stringify(name)} 不能为空`)
   }
   const encoded = encodeDbfText(name, encoding)
   if (!isLosslessEncoding(name, encoded, encoding)) {
-    throw new Error(`DBF field name ${JSON.stringify(name)} cannot be represented as ${encoding}`)
+    throw new Error(`DBF 字段名 ${JSON.stringify(name)} 无法以 ${encoding} 编码表示`)
   }
   if (encoded.length > 10) {
-    if (strict) throw new Error(`DBF field name ${name} exceeds ten encoded bytes`)
+    if (strict) throw new Error(`DBF 字段名 ${name} 超过 10 个编码字节`)
     return decodeDbfText(encodeDbfTextTruncated(name, encoding, 10), encoding)
   }
   return name
@@ -79,17 +79,17 @@ function encodeCharacter(
 ): void {
   if (typeof value !== 'string') {
     if (strict || value instanceof Uint8Array || typeof value === 'object') {
-      throw new Error(`Character field ${field.name} requires a string`)
+      throw new Error(`字符字段 ${field.name} 需要字符串值`)
     }
     value = String(value)
   }
   let encoded = encodeDbfText(value, encoding)
   if (strict && !isLosslessEncoding(value, encoded, encoding)) {
-    throw new Error(`Character field ${field.name} cannot be represented losslessly as ${encoding}`)
+    throw new Error(`字符字段 ${field.name} 无法无损地以 ${encoding} 表示`)
   }
   if (encoded.length > field.length) {
     if (strict) {
-      throw new Error(`Character field ${field.name} needs ${encoded.length} bytes; width is ${field.length}`)
+      throw new Error(`字符字段 ${field.name} 需要 ${encoded.length} 字节，字段宽度为 ${field.length}`)
     }
     encoded = encodeDbfTextTruncated(value, encoding, field.length)
   }
@@ -102,7 +102,7 @@ function encodeLogical(value: CellValue | undefined, field: DbfFieldDescriptor, 
     return value.toUpperCase().charCodeAt(0)
   }
   if (!strict && (value === 1 || value === 0)) return value === 1 ? 0x54 : 0x46
-  throw new Error(`Logical field ${field.name} requires a boolean or T/F/Y/N value`)
+  throw new Error(`逻辑字段 ${field.name} 需要布尔值或 T/F/Y/N`)
 }
 
 function encodeDouble(
@@ -119,7 +119,7 @@ function encodeDouble(
   const decimal = decimalFromValue(value, `Double field ${field.name}`, strict)
   const number = decimal.toNumber()
   if (strict && (!Number.isFinite(number) || !new Decimal(number).eq(decimal))) {
-    throw new Error(`Double field ${field.name} would lose decimal precision; use a number or exact decimal text`)
+    throw new Error(`Double 类型字段 ${field.name} 会丢失小数精度；请使用数字或精确的十进制文本`)
   }
   view.setFloat64(offset, number, true)
 }
@@ -134,12 +134,12 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     const strict = options.strict ?? false
     const fileVersion = options.fileVersion ?? 0x30
     if (fileVersion !== 0x30) {
-      throw new Error(`Unsupported DBF output version 0x${fileVersion.toString(16)}; expected 0x30`)
+      throw new Error(`不支持的 DBF 输出版本 0x${fileVersion.toString(16)}；仅支持 0x30`)
     }
     const encoding = options.encoding ?? DEFAULT_DBF_ENCODING
     assertDbfEncoding(encoding)
     if (!Number.isInteger(source.recordCount) || source.recordCount < 0 || source.recordCount > 0xffff_ffff) {
-      throw new Error('DBF source recordCount must be a uint32')
+      throw new Error('DBF 源记录数必须是无符号 32 位整数')
     }
 
     const validation = validateDbfFields(inputFields)
@@ -150,7 +150,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     const fields = validation.fields.map((field) => ({ ...field }))
     let nullFlagIndex = fields.findIndex((field) => field.name.toLowerCase() === '_nullflags')
     if (nullFlagIndex >= 0 && fields[nullFlagIndex].type !== '0') {
-      throw new Error('_NullFlags is reserved for the VFP type 0 system field')
+      throw new Error('_NullFlags 是 VFP type 0 系统字段专用的保留名称')
     }
     const nullFlagLength = requiredNullFlagLength(fields)
     if (nullFlagIndex < 0 && nullFlagLength > 0) {
@@ -168,7 +168,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
       const nullFlags = fields[nullFlagIndex]
       if (nullFlags.length < nullFlagLength) {
         if (strict) {
-          throw new Error(`_NullFlags must contain at least ${nullFlagLength} bytes`)
+          throw new Error(`_NullFlags 至少需要 ${nullFlagLength} 字节`)
         }
         nullFlags.length = nullFlagLength
       }
@@ -181,7 +181,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     const outputNames = fields.map((field) => {
       const name = writerFieldName(field, strict, encoding)
       const key = name.toLowerCase()
-      if (names.has(key)) throw new Error(`Duplicate DBF field name ${name}`)
+      if (names.has(key)) throw new Error(`DBF 字段名重复：${name}`)
       names.add(key)
       return name
     })
@@ -198,17 +198,17 @@ export class ArrayBufferDbfWriter implements DbfWriter {
       layouts.push(layout)
       recordLength += field.length
     }
-    if (recordLength > 0xffff) throw new Error(`DBF record length ${recordLength} exceeds uint16`)
+    if (recordLength > 0xffff) throw new Error(`DBF 记录长度 ${recordLength} 超出 uint16 上限`)
     const trailingHeader = options.trailingHeader?.slice() ?? new Uint8Array()
     const headerLength = 32 + fields.length * 32 + 1 + trailingHeader.length
-    if (headerLength > 0xffff) throw new Error(`DBF header length ${headerLength} exceeds uint16`)
+    if (headerLength > 0xffff) throw new Error(`DBF 头长度 ${headerLength} 超出 uint16 上限`)
 
     const encodedRecords: Uint8Array[] = []
     let rowIndex = 0
     for await (const record of source.records) {
       const values = record.values
       if (strict && values.length !== inputFields.length) {
-        throw new Error(`Record ${rowIndex} has ${values.length} values; expected ${inputFields.length}`)
+        throw new Error(`记录 ${rowIndex} 包含 ${values.length} 个值，预期 ${inputFields.length} 个`)
       }
       const output = new Uint8Array(recordLength)
       const view = new DataView(output.buffer)
@@ -227,7 +227,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
           // 非可空字段不占 _NullFlags 位，因此不会置位。可空字段的 NULL 仍写显式 .NULL.。
           const writeAsBlank = options.writeNullAsBlank && !field.nullable && field.type !== '0'
           if (!writeAsBlank && strict && !field.nullable && field.type !== '0') {
-            throw new Error(`Record ${rowIndex}, field ${field.name} is NULL but is not nullable`)
+            throw new Error(`记录 ${rowIndex}，字段 ${field.name} 为 NULL，但该字段不可空`)
           }
           continue
         }
@@ -272,7 +272,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
           case '0': {
             if (!(value instanceof Uint8Array)) throw new Error(`${label} requires Uint8Array binary data`)
             if (strict && value.length > field.length) {
-              throw new Error(`${label} exceeds its ${field.length}-byte system field`)
+              throw new Error(`${label} 超出其 ${field.length} 字节的系统字段宽度`)
             }
             output.set(value.subarray(0, field.length), offset)
             break
@@ -296,7 +296,7 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     }
 
     if (strict && rowIndex !== source.recordCount) {
-      throw new Error(`DBF source declared ${source.recordCount} records but yielded ${rowIndex}`)
+      throw new Error(`DBF 源声明 ${source.recordCount} 条记录，实际产出 ${rowIndex} 条`)
     }
     const recordCount = strict ? source.recordCount : rowIndex
     const result = new Uint8Array(headerLength + recordCount * recordLength + 1)

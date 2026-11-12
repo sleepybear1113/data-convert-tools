@@ -166,7 +166,7 @@ export function inferSqliteTargetSchema(
           ? 'SQLITE_INTEGER_AS_TEXT'
           : 'SQLITE_DECIMAL_AS_TEXT',
         severity: 'info',
-        message: `Column ${name} uses TEXT to preserve numeric precision`,
+        message: `列 ${name} 使用 TEXT 保留数值精度`,
         location: { tableName: resolved.tableName, columnIndex: mapping.sourceIndex, columnName: name },
       })
     }
@@ -174,7 +174,7 @@ export function inferSqliteTargetSchema(
       diagnostics.push({
         code: 'SQLITE_UNSAFE_SOURCE_NUMBER',
         severity: 'warning',
-        message: `Column ${name} contains an unsafe JavaScript integer; original precision may already be lost`,
+        message: `列 ${name} 包含可能已损失精度的 JavaScript 整数`,
         location: { tableName: resolved.tableName, columnIndex: mapping.sourceIndex, columnName: name },
       })
     }
@@ -193,7 +193,7 @@ export function inferSqliteTargetSchema(
     diagnostics.push({
       code: 'SQLITE_EMPTY_TABLE_NAME',
       severity: 'error',
-      message: 'SQLite target table name cannot be empty',
+      message: 'SQLite 目标表名不能为空',
     })
   }
 

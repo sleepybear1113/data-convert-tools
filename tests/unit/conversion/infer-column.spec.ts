@@ -118,7 +118,7 @@ describe('column inference - leading zeros, nulls, mixed types and dates', () =>
 
 describe('table inference', () => {
   it('validates options even for a zero-column table', () => {
-    expect(() => inferTable({ id: 'empty', name: 'empty', columns: [] }, [], { sampleSize: 0 })).toThrow(/positive integer/u)
+    expect(() => inferTable({ id: 'empty', name: 'empty', columns: [] }, [], { sampleSize: 0 })).toThrow(/正整数/u)
   })
 
   it('preserves model metadata and annotates column-level diagnostics and nullability', () => {

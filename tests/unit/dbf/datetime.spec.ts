@@ -35,7 +35,7 @@ describe('DBF calendar date and Julian date-time', () => {
     expect(dateTimeToJulian(parts)).toEqual({ julianDay: 2_451_545, milliseconds: 86_399_999 })
     expect(formatDbfDateTime(dateTimeFromJulian(2_451_545, 86_399_999)))
       .toBe('2000-01-01T23:59:59.999')
-    expect(() => parseDbfDateTime('2000-01-01T00:00:00Z')).toThrow(/timezone-less/)
+    expect(() => parseDbfDateTime('2000-01-01T00:00:00Z')).toThrow(/不含时区/)
     expect(() => dateTimeFromJulian(2_451_545, 86_400_000)).toThrow()
   })
 })

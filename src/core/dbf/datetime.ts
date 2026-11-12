@@ -20,7 +20,7 @@ function pad(value: number, size: number): string {
 
 function integer(value: number, name: string): void {
   if (!Number.isInteger(value)) {
-    throw new Error(`${name} must be an integer`)
+    throw new Error(`${name} 必须为整数`)
   }
 }
 
@@ -38,7 +38,7 @@ export function isValidDbfDate({ year, month, day }: DbfDateParts): boolean {
 
 function assertDate(parts: DbfDateParts): void {
   if (!isValidDbfDate(parts)) {
-    throw new Error(`Invalid DBF calendar date: ${parts.year}-${parts.month}-${parts.day}`)
+    throw new Error(`无效的 DBF 日历日期：${parts.year}-${parts.month}-${parts.day}`)
   }
 }
 
@@ -58,7 +58,7 @@ export function parseDbfDate(value: string): DbfDateParts | null {
     return null
   }
   if (!/^\d{8}$/.test(value)) {
-    throw new Error('DBF date must contain exactly eight YYYYMMDD digits')
+    throw new Error('DBF 日期必须为 8 位 YYYYMMDD 数字')
   }
   const parts = {
     year: Number(value.slice(0, 4)),
@@ -72,7 +72,7 @@ export function parseDbfDate(value: string): DbfDateParts | null {
 export function parseDateOnly(value: string): DbfDateParts {
   const match = DATE_ONLY_PATTERN.exec(value)
   if (!match) {
-    throw new Error('Date value must use YYYY-MM-DD')
+    throw new Error('日期值必须使用 YYYY-MM-DD 格式')
   }
   const parts = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
   assertDate(parts)
@@ -95,7 +95,7 @@ export function formatDbfDateTime(parts: DbfDateTimeParts): string {
     || parts.second < 0 || parts.second > 59
     || parts.millisecond < 0 || parts.millisecond > 999
   ) {
-    throw new Error('Invalid DBF time of day')
+    throw new Error('无效的 DBF 时间')
   }
   return `${formatDateOnly(parts)}T${pad(parts.hour, 2)}:${pad(parts.minute, 2)}:${pad(parts.second, 2)}.${pad(parts.millisecond, 3)}`
 }
@@ -104,7 +104,7 @@ export function formatDbfDateTime(parts: DbfDateTimeParts): string {
 export function parseDbfDateTime(value: string): DbfDateTimeParts {
   const match = DATE_TIME_PATTERN.exec(value)
   if (!match) {
-    throw new Error('Date-time value must be timezone-less ISO YYYY-MM-DDTHH:mm:ss.SSS')
+    throw new Error('日期时间值必须为不含时区的 ISO 格式 YYYY-MM-DDTHH:mm:ss.SSS')
   }
   const parts = {
     year: Number(match[1]),
@@ -138,7 +138,7 @@ export function julianDayFromDate(parts: DbfDateParts): number {
 export function dateFromJulianDay(julianDay: number): DbfDateParts {
   integer(julianDay, 'Julian day')
   if (julianDay < 1) {
-    throw new Error('Julian day must be positive')
+    throw new Error('儒略日必须为正数')
   }
   const a = julianDay + 32044
   const b = Math.floor((4 * a + 3) / 146097)
@@ -170,7 +170,7 @@ export function dateTimeToJulian(parts: DbfDateTimeParts): {
 export function dateTimeFromJulian(julianDay: number, milliseconds: number): DbfDateTimeParts {
   integer(milliseconds, 'milliseconds')
   if (milliseconds < 0 || milliseconds >= 86_400_000) {
-    throw new Error('DBF milliseconds must be between 0 and 86399999')
+    throw new Error('DBF 毫秒数必须在 0 到 86399999 之间')
   }
   const date = dateFromJulianDay(julianDay)
   const hour = Math.floor(milliseconds / 3_600_000)
