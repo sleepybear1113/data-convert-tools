@@ -9,11 +9,10 @@ import {
 } from './datetime'
 import {
   assertDbfEncoding,
-  decodeDbfText,
+  decodeDbfCharacterField,
   decodeNullTerminatedText,
   DEFAULT_DBF_ENCODING,
   encodingForLanguageDriver,
-  isLosslessDecoding,
 } from './encoding'
 import { decimalFromCurrency, decimalFromNumericField } from './numeric'
 import type {
@@ -56,6 +55,9 @@ function decodeField(
   recordOffset: number,
   layout: FieldLayout,
   encoding: string,
+  rowIndex: number,
+  columnIndex: number,
+  diagnostics: Diagnostic[],
 ): CellValue {
   const { field, offset } = layout
   const start = recordOffset + offset
@@ -63,11 +65,19 @@ function decodeField(
   switch (field.type) {
     case 'C': {
       const textBytes = trimPaddedCharacterBytes(raw)
-      const decoded = decodeDbfText(textBytes, encoding)
-      if (!isLosslessDecoding(textBytes, decoded, encoding)) {
+      const result = decodeDbfCharacterField(textBytes, encoding)
+      if (result.invalid) {
         throw new Error(`Field ${field.name} contains invalid ${encoding} byte sequences`)
       }
-      return decoded
+      if (result.tailTruncated) {
+        diagnostics.push({
+          code: 'DBF_TRUNCATED_CHARACTER',
+          severity: 'warning',
+          message: `Field ${field.name} ends with an incomplete ${encoding} character (text was cut at the field boundary); the partial character was dropped`,
+          location: { rowIndex, columnIndex, columnName: field.name },
+        })
+      }
+      return result.text
     }
     case 'N':
     case 'F': {
@@ -328,7 +338,7 @@ export class ArrayBufferDbfReader implements DbfReader {
             continue
           }
           try {
-            values.push(decodeField(view, bytes, recordOffset, layout, encoding))
+            values.push(decodeField(view, bytes, recordOffset, layout, encoding, rowIndex, columnIndex, diagnostics))
           } catch (error) {
             const message = `Record ${rowIndex}, field ${layout.field.name}: ${messageFor(error)}`
             if (strict) throw new Error(message)

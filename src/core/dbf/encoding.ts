@@ -77,3 +77,39 @@ export function decodeNullTerminatedText(
   }
   return decodeDbfText(bytes.subarray(start, end), encoding)
 }
+
+export interface DbfCharacterTextResult {
+  /** 解码后的文本；尾部截断时为去掉不完整序列后的完整字符文本。 */
+  text: string
+  /** 内容以一个被字段边界截断的多字节字符结尾（不完整部分已丢弃）。 */
+  tailTruncated: boolean
+  /** 字节序列无法按当前编码恢复（存在非尾部的无效序列）。 */
+  invalid: boolean
+}
+
+/**
+ * 解码 C 字段内容，并容忍字段边界截断的多字节字符。
+ *
+ * 真实世界的 DBF 常把超长文本直接按字段宽度截断存储，最后一个多字节字符
+ * 只剩前半个字节。解码失败时逐字节尝试去掉尾部不完整序列（最多 3 字节，
+ * 覆盖 GBK/GB18030 的序列宽度），保留所有完整字符；尾部的不完整半个字符
+ * 在源文件中已不存在，丢弃不构成额外损失。
+ */
+export function decodeDbfCharacterField(
+  bytes: Uint8Array,
+  encoding: string,
+): DbfCharacterTextResult {
+  const decoded = decodeDbfText(bytes, encoding)
+  if (isLosslessDecoding(bytes, decoded, encoding)) {
+    return { text: decoded, tailTruncated: false, invalid: false }
+  }
+  const maxDrop = Math.min(3, bytes.length)
+  for (let drop = 1; drop <= maxDrop; drop += 1) {
+    const prefix = bytes.subarray(0, bytes.length - drop)
+    const prefixText = decodeDbfText(prefix, encoding)
+    if (isLosslessDecoding(prefix, prefixText, encoding)) {
+      return { text: prefixText, tailTruncated: true, invalid: false }
+    }
+  }
+  return { text: decoded, tailTruncated: false, invalid: true }
+}

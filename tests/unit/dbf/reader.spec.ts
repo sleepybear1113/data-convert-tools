@@ -130,6 +130,75 @@ describe('ArrayBufferDbfReader independent binary decoding', () => {
     expect((await collectRecords(result.records))[0].values).toEqual(['是', 'BM001'])
   })
 
+  it('keeps complete characters when text is cut mid-character at the field boundary', async () => {
+    // 真实场景：C 字段内容超长被源系统按字段宽度截断，最后一个 GBK 汉字
+    // 只剩引导字节（"一等奖加两" + 残缺的半个字）。
+    const fields: DbfFieldDescriptor[] = [
+      dbfField('HJQK', 'C', 11),
+      dbfField('XM', 'C', 4),
+    ]
+    const headerLength = 33 + fields.length * 32
+    const recordLength = 1 + fields.reduce((sum, field) => sum + field.length, 0)
+    const bytes = new Uint8Array(headerLength + recordLength + 1)
+    const view = new DataView(bytes.buffer)
+    bytes[0] = 0x30
+    view.setUint32(4, 1, true)
+    view.setUint16(8, headerLength, true)
+    view.setUint16(10, recordLength, true)
+    bytes[29] = 0x7a
+    fields.forEach((field, index) => {
+      const start = 32 + index * 32
+      bytes.set(encodeDbfText(field.name, 'gbk'), start)
+      bytes[start + 11] = field.type.charCodeAt(0)
+      bytes[start + 16] = field.length
+    })
+    bytes[32 + fields.length * 32] = 0x0d
+    const record = headerLength
+    bytes[record] = 0x20
+    bytes.set(encodeDbfText('一等奖加两', 'gbk'), record + 1)
+    bytes[record + 11] = 0xb5 // 残缺的半个字，恰好占满字段宽度
+    bytes.set(encodeDbfText('张三', 'gbk'), record + 12)
+    bytes[bytes.length - 1] = 0x1a
+
+    // 截断的半个字在源文件中已不存在：保留全部完整字符并给出警告（strict 也不中断）
+    const result = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect((await collectRecords(result.records))[0].values).toEqual(['一等奖加两', '张三'])
+    const warning = result.diagnostics.find((item) => item.code === 'DBF_TRUNCATED_CHARACTER')
+    expect(warning?.severity).toBe('warning')
+    expect(warning?.location?.columnName).toBe('HJQK')
+    expect(warning?.location?.rowIndex).toBe(0)
+    expect(result.diagnostics.some((item) => item.code === 'DBF_INVALID_FIELD_VALUE')).toBe(false)
+  })
+
+  it('still rejects C fields with invalid sequences that are not a truncated tail', async () => {
+    const fields: DbfFieldDescriptor[] = [dbfField('HJQK', 'C', 6)]
+    const headerLength = 33 + fields.length * 32
+    const recordLength = 1 + fields.reduce((sum, field) => sum + field.length, 0)
+    const bytes = new Uint8Array(headerLength + recordLength + 1)
+    const view = new DataView(bytes.buffer)
+    bytes[0] = 0x30
+    view.setUint32(4, 1, true)
+    view.setUint16(8, headerLength, true)
+    view.setUint16(10, recordLength, true)
+    bytes[29] = 0x7a
+    fields.forEach((field, index) => {
+      const start = 32 + index * 32
+      bytes.set(encodeDbfText(field.name, 'gbk'), start)
+      bytes[start + 11] = field.type.charCodeAt(0)
+      bytes[start + 16] = field.length
+    })
+    bytes[32 + fields.length * 32] = 0x0d
+    const record = headerLength
+    bytes[record] = 0x20
+    // 引导字节后跟空格：非法 GBK 序列出现在内容中间，不属于可恢复的尾部截断
+    bytes.set([0xb5, 0x20, 0x41, 0x42], record + 1)
+    bytes[bytes.length - 1] = 0x1a
+
+    // 记录解码在生成器被消费时才执行：必须在遍历记录时断言 strict 抛错
+    const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    await expect(collectRecords(read.records)).rejects.toThrow(/invalid gbk byte sequences/)
+  })
+
   it('treats blank numeric fields as NULL and upgrades the column to nullable', async () => {
     // 真实场景：描述符未标记 nullable（flags=0），但数据以全空格表示"未填写"。
     const fields: DbfFieldDescriptor[] = [
