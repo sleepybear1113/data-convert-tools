@@ -502,7 +502,7 @@ JS 自己写入、自己读取成功主要证明内部一致性，因此二进�
 首版已经完成：
 
 - Vite + Vue 3 + TypeScript、绝对 Node/npm 启动器和锁定依赖；
-- VFP `0x30` DBF Reader/Writer、`C/N/F/Y/D/L/I/T/B`、GBK、NULL 位图、删除标志和原头部保留；
+- dBASE III `0x03` 与 VFP `0x30` DBF Reader/Writer；`C/N/F/Y/D/L/I/T/B`（0x03 不含 Memo）、GBK、NULL、删除标志和原头部保留；
 - 单 Worker、sql.js、常用 SQL、多语句、事务、结果物化和分页；
 - CodeMirror SQLite 高亮、关键词/表名/列名补全；
 - SheetJS/Papa Parse 导入、列映射、类型推断和高精度保护；

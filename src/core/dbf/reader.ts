@@ -99,6 +99,7 @@ function decodeField(
       throw new Error(`字段 ${field.name} 的逻辑值字节无效（0x${raw[0].toString(16)}）`)
     }
     case 'D': {
+      if (/^[ \0]*$/.test(ascii(raw))) return null
       const date = parseDbfDate(ascii(raw))
       return date === null ? null : formatDateOnly(date)
     }
@@ -117,7 +118,7 @@ function decodeField(
   }
 }
 
-/** ArrayBuffer/DataView Visual FoxPro DBF reader. */
+/** ArrayBuffer/DataView reader for dBASE III (0x03) and Visual FoxPro (0x30). */
 export class ArrayBufferDbfReader implements DbfReader {
   async read(input: ArrayBuffer, options: DbfReadOptions = {}): Promise<DbfReadResult> {
     const bytes = new Uint8Array(input)
@@ -126,8 +127,8 @@ export class ArrayBufferDbfReader implements DbfReader {
     }
     const view = new DataView(input)
     const fileVersion = view.getUint8(0)
-    if (fileVersion !== 0x30) {
-      throw new Error(`不支持的 DBF 版本 0x${fileVersion.toString(16)}；仅支持 VFP 0x30`)
+    if (fileVersion !== 0x30 && fileVersion !== 0x03) {
+      throw new Error(`不支持的 DBF 版本 0x${fileVersion.toString(16)}；支持 dBASE III 0x03 和 VFP 0x30`)
     }
     const recordCount = view.getUint32(4, true)
     const headerLength = view.getUint16(8, true)
@@ -193,6 +194,9 @@ export class ArrayBufferDbfReader implements DbfReader {
     }
     if (terminatorOffset < 0) {
       throw new Error('DBF 头部缺少 0x0d 字段描述符终止符')
+    }
+    if (fileVersion === 0x03 && fields.length > 128) {
+      throw new Error(`dBASE III 最多支持 128 个字段，实际为 ${fields.length}`)
     }
 
     const layouts: FieldLayout[] = []

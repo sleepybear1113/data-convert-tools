@@ -26,7 +26,12 @@ function putDescriptor(
   bytes[start + 18] = field.flags ?? 0
 }
 
-function rawDbf(fields: readonly DbfFieldDescriptor[], recordCount: number, trailing: Uint8Array): {
+function rawDbf(
+  fields: readonly DbfFieldDescriptor[],
+  recordCount: number,
+  trailing: Uint8Array,
+  fileVersion: number = 0x30,
+): {
   bytes: Uint8Array
   view: DataView
   headerLength: number
@@ -36,7 +41,7 @@ function rawDbf(fields: readonly DbfFieldDescriptor[], recordCount: number, trai
   const recordLength = 1 + fields.reduce((sum, field) => sum + field.length, 0)
   const bytes = new Uint8Array(headerLength + recordCount * recordLength + 1)
   const view = new DataView(bytes.buffer)
-  bytes[0] = 0x30
+  bytes[0] = fileVersion
   view.setUint32(4, recordCount, true)
   view.setUint16(8, headerLength, true)
   view.setUint16(10, recordLength, true)
@@ -277,6 +282,45 @@ describe('ArrayBufferDbfReader independent binary decoding', () => {
     const truncated = bytes.slice(0, bytes.length - 6)
     await expect(new ArrayBufferDbfReader().read(exactArrayBuffer(truncated), { strict: true }))
       .rejects.toThrow(/不完整/)
+  })
+})
+
+describe('dBASE III 0x03 reader', () => {
+  it('reads dBASE III C/N/D/L fields without VFP NULL flags', async () => {
+    const fields = [
+      dbfField('NAME', 'C', 6),
+      dbfField('AMOUNT', 'N', 7, 2),
+      dbfField('DATE', 'D', 8),
+      dbfField('ACTIVE', 'L', 1),
+    ]
+    const { bytes, headerLength } = rawDbf(fields, 1, new Uint8Array(), 0x03)
+    const record = headerLength
+    bytes[record] = 0x20
+    bytes.set(encodeDbfText('中文', 'gbk'), record + 1)
+    putAscii(bytes, record + 7, '  12.5')
+    putAscii(bytes, record + 14, '20260206')
+    bytes[record + 22] = 0x54
+
+    const result = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect(result.header.fileVersion).toBe(0x03)
+    expect(result.header.trailingHeader).toHaveLength(0)
+    expect(result.fields.map((field) => field.type)).toEqual(['C', 'N', 'D', 'L'])
+    expect(result.fields.every((field) => !field.nullable && !field.system)).toBe(true)
+    expect((await collectRecords(result.records))[0].values).toEqual([
+      '中文', 12.5, '2026-02-06', true,
+    ])
+  })
+
+  it('treats blank numeric and date fields as NULL in dBASE III', async () => {
+    const fields = [dbfField('N', 'N', 4), dbfField('D', 'D', 8)]
+    const { bytes, headerLength } = rawDbf(fields, 1, new Uint8Array(), 0x03)
+    const record = headerLength
+    bytes[record] = 0x20
+
+    const result = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect((await collectRecords(result.records))[0].values).toEqual([null, null])
+    expect(result.fields.every((field) => field.nullable)).toBe(true)
+    expect(result.diagnostics.some((item) => item.code === 'DBF_EMPTY_VALUES_NULLABLE')).toBe(true)
   })
 })
 

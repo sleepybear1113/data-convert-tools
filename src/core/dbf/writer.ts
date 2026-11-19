@@ -124,7 +124,7 @@ function encodeDouble(
   view.setFloat64(offset, number, true)
 }
 
-/** JavaDBF-compatible VFP writer with exact decimal and NULL-flag handling. */
+/** Writer for dBASE III (0x03) and JavaDBF-compatible VFP (0x30). */
 export class ArrayBufferDbfWriter implements DbfWriter {
   async write(
     inputFields: readonly DbfFieldDescriptor[],
@@ -133,8 +133,9 @@ export class ArrayBufferDbfWriter implements DbfWriter {
   ): Promise<Uint8Array> {
     const strict = options.strict ?? false
     const fileVersion = options.fileVersion ?? 0x30
-    if (fileVersion !== 0x30) {
-      throw new Error(`不支持的 DBF 输出版本 0x${fileVersion.toString(16)}；仅支持 0x30`)
+    const isDbase3 = fileVersion === 0x03
+    if (!isDbase3 && fileVersion !== 0x30) {
+      throw new Error(`不支持的 DBF 输出版本 0x${fileVersion.toString(16)}；支持 dBASE III 0x03 和 VFP 0x30`)
     }
     const encoding = options.encoding ?? DEFAULT_DBF_ENCODING
     assertDbfEncoding(encoding)
@@ -147,7 +148,22 @@ export class ArrayBufferDbfWriter implements DbfWriter {
       throw new Error(validation.diagnostics.find((item) => item.severity === 'error')?.message
         ?? 'Invalid DBF fields')
     }
-    const fields = validation.fields.map((field) => ({ ...field }))
+    let fields = validation.fields.map((field) => ({ ...field }))
+    if (isDbase3) {
+      if (fields.some((field) => field.system)) {
+        throw new Error('dBASE III 不支持 VFP 系统字段')
+      }
+      const unsupported = fields.find((field) =>
+        !['C', 'N', 'F', 'D', 'L'].includes(field.type))
+      if (unsupported) {
+        throw new Error(`dBASE III 不支持字段类型 ${unsupported.type}（字段 ${unsupported.name}）；Memo 需要外部 DBT 文件`)
+      }
+      if (fields.length > 128) {
+        throw new Error(`dBASE III 最多支持 128 个字段，实际为 ${fields.length}`)
+      }
+      // dBASE III 没有 NULL 位图；NULL/空值统一写为空白。
+      fields = fields.map((field) => ({ ...field, nullable: false, flags: 0, system: false }))
+    }
     let nullFlagIndex = fields.findIndex((field) => field.name.toLowerCase() === '_nullflags')
     if (nullFlagIndex >= 0 && fields[nullFlagIndex].type !== '0') {
       throw new Error('_NullFlags 是 VFP type 0 系统字段专用的保留名称')
@@ -200,6 +216,9 @@ export class ArrayBufferDbfWriter implements DbfWriter {
     }
     if (recordLength > 0xffff) throw new Error(`DBF 记录长度 ${recordLength} 超出 uint16 上限`)
     const trailingHeader = options.trailingHeader?.slice() ?? new Uint8Array()
+    if (isDbase3 && trailingHeader.some((byte) => byte !== 0)) {
+      throw new Error('dBASE III 头部结束符之后不应保留非零附加字节')
+    }
     const headerLength = 32 + fields.length * 32 + 1 + trailingHeader.length
     if (headerLength > 0xffff) throw new Error(`DBF 头长度 ${headerLength} 超出 uint16 上限`)
 
@@ -225,7 +244,8 @@ export class ArrayBufferDbfWriter implements DbfWriter {
         if (isNull) {
           // writeNullAsBlank：非可空字段的 NULL 写为空白填充（还原源文件的空白语义）；
           // 非可空字段不占 _NullFlags 位，因此不会置位。可空字段的 NULL 仍写显式 .NULL.。
-          const writeAsBlank = options.writeNullAsBlank && !field.nullable && field.type !== '0'
+          const writeAsBlank = (isDbase3 || options.writeNullAsBlank)
+            && !field.nullable && field.type !== '0'
           if (!writeAsBlank && strict && !field.nullable && field.type !== '0') {
             throw new Error(`记录 ${rowIndex}，字段 ${field.name} 为 NULL，但该字段不可空`)
           }
@@ -320,9 +340,11 @@ export class ArrayBufferDbfWriter implements DbfWriter {
       view.setUint32(descriptorOffset + 12, layouts[index].offset, true)
       result[descriptorOffset + 16] = field.length
       result[descriptorOffset + 17] = field.decimalPlaces
-      result[descriptorOffset + 18] = ((field.flags ?? 0) & 0xfc)
-        | (field.system ? 0x01 : 0)
-        | (field.nullable ? 0x02 : 0)
+      result[descriptorOffset + 18] = isDbase3
+        ? 0
+        : ((field.flags ?? 0) & 0xfc)
+          | (field.system ? 0x01 : 0)
+          | (field.nullable ? 0x02 : 0)
     }
     result[32 + fields.length * 32] = 0x0d
     result.set(trailingHeader, 33 + fields.length * 32)

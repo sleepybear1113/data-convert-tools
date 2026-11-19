@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CellValue } from '../../../src/core/model/value'
 import { ArrayBufferDbfReader } from '../../../src/core/dbf/reader'
+import { decodeDbfText } from '../../../src/core/dbf/encoding'
 import { ArrayBufferDbfWriter } from '../../../src/core/dbf/writer'
 import type { DbfFieldDescriptor } from '../../../src/core/dbf/types'
 import {
@@ -255,5 +256,72 @@ describe('DBF writer strictness and GBK boundaries', () => {
     expect(bytes[43]).toBe(0x43)
     expect(new DataView(bytes.buffer).getUint32(44, true)).toBe(1)
     expect(bytes[bytes.length - 1]).toBe(0x1a)
+  })
+})
+
+describe('dBASE III 0x03 writer', () => {
+  it('writes C/N/D/L fields, treats NULL as blank and reads them back', async () => {
+    const fields = [
+      dbfField('NAME', 'C', 6),
+      dbfField('AMOUNT', 'N', 7, 2),
+      dbfField('DATE', 'D', 8),
+      dbfField('ACTIVE', 'L', 1),
+    ]
+    const bytes = await new ArrayBufferDbfWriter().write(
+      fields,
+      recordSource([dbfRecord(['中文', '12.5', '2026-02-06', true])]),
+      { fileVersion: 0x03, strict: true },
+    )
+
+    expect(bytes[0]).toBe(0x03)
+    expect(bytes[29]).toBe(0x7a)
+    const view = new DataView(bytes.buffer)
+    const headerLength = view.getUint16(8, true)
+    const recordLength = view.getUint16(10, true)
+    expect(recordLength).toBe(23)
+    expect(decodeDbfText(bytes.subarray(headerLength + 1, headerLength + 7), 'gbk').trim()).toBe('中文')
+    expect(new TextDecoder().decode(bytes.subarray(headerLength + 7, headerLength + 14)).trim()).toBe('12.50')
+    expect(new TextDecoder().decode(bytes.subarray(headerLength + 14, headerLength + 22))).toBe('20260206')
+    expect(bytes[headerLength + 22]).toBe(0x54)
+    expect(bytes[bytes.length - 1]).toBe(0x1a)
+
+    const read = await new ArrayBufferDbfReader().read(exactArrayBuffer(bytes), { strict: true })
+    expect(read.header.fileVersion).toBe(0x03)
+    expect(read.fields.every((field) => !field.nullable && !field.system)).toBe(true)
+    expect((await collectRecords(read.records))[0].values).toEqual(['中文', 12.5, '2026-02-06', true])
+  })
+
+  it('writes NULL as blank without requiring nullable flags in dBASE III', async () => {
+    const fields = [dbfField('N', 'N', 5, 2), dbfField('D', 'D', 8), dbfField('C', 'C', 4)]
+    const bytes = await new ArrayBufferDbfWriter().write(
+      fields,
+      recordSource([dbfRecord([null, null, null])]),
+      { fileVersion: 0x03, strict: true },
+    )
+
+    const view = new DataView(bytes.buffer)
+    const recordOffset = view.getUint16(8, true) + 1
+    const text = new TextDecoder().decode(bytes.subarray(recordOffset, recordOffset + 17))
+    expect(text.trim()).toBe('')
+    expect([...bytes.subarray(recordOffset, recordOffset + 17)].every((byte) => byte === 0x20)).toBe(true)
+  })
+
+  it('rejects VFP-only types, system fields and non-empty trailing bytes', async () => {
+    const writer = new ArrayBufferDbfWriter()
+    await expect(writer.write(
+      [dbfField('Y', 'Y', 8, 4)],
+      recordSource([dbfRecord(['1'])]),
+      { fileVersion: 0x03, strict: true },
+    )).rejects.toThrow(/dBASE III 不支持字段类型 Y/)
+    await expect(writer.write(
+      [dbfField('FLAGS', '0', 1, 0, { system: true, flags: 0x05 })],
+      recordSource([dbfRecord([new Uint8Array([1])])]),
+      { fileVersion: 0x03, strict: true },
+    )).rejects.toThrow(/VFP 系统字段/)
+    await expect(writer.write(
+      [dbfField('C', 'C', 1)],
+      recordSource([dbfRecord(['A'])]),
+      { fileVersion: 0x03, strict: true, trailingHeader: Uint8Array.from([1]) },
+    )).rejects.toThrow(/非零附加字节/)
   })
 })

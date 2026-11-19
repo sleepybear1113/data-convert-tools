@@ -69,7 +69,7 @@ export interface DbfRecordSource {
 }
 
 export interface DbfWriteOptions {
-  /** Only Visual FoxPro 0x30 is supported. Defaults to 0x30. */
+  /** Supported versions are dBASE III (0x03) and Visual FoxPro (0x30). Defaults to 0x30. */
   fileVersion?: number
   /** Defaults to GBK. */
   encoding?: string

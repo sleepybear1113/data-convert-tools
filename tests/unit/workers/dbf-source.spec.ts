@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -59,5 +60,20 @@ describe('DBF worker source', () => {
 
     const source = await openDbfSource(exactBuffer(bytes), { strict: true }, 'numbers')
     expect(source.schema.columns[0].dataType).toBe('decimal')
+  })
+
+  describe.skipIf(!existsSync('sample-data/msk04.DBF'))('local sensitive dBASE III sample', () => {
+    it('reads header metadata without exposing record values', async () => {
+      const file = await readFile('sample-data/msk04.DBF')
+      const preview = await previewDbf(exactBuffer(file), { strict: true }, 'msk04.DBF')
+
+      const source = preview.schema.source
+      expect(source?.format).toBe('dbf')
+      if (source?.format !== 'dbf') throw new Error('Expected DBF source metadata')
+      expect(source.fileVersion).toBe(0x03)
+      expect(preview.totalRows).toBe(729)
+      expect(preview.schema.columns).toHaveLength(8)
+      expect(preview.schema.columns.every((column) => column.dataType === 'string')).toBe(true)
+    })
   })
 })
